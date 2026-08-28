@@ -1,0 +1,6 @@
+{
+  "name": "СК-КИТ",
+  "description": "СК-КИТ — Информационная система управления строительным объектом, технического и строительного контроля, ПТО, смет, ОВиК и исполнительной документации",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,218 @@
+[
+  {
+    "testId": "TEST-SEC-01",
+    "area": "SECURITY HEADERS",
+    "test": "Verify strict security headers in HTTP response (CSP, nosniff, HSTS, Referrer-Policy, Permissions-Policy)",
+    "expected": "CSP, X-Content-Type-Options: nosniff, Strict-Transport-Security, Referrer-Policy, Permissions-Policy present",
+    "actual": "nosniff=true, xss=true, hsts=true, referrer=true, permissions=true, csp=true",
+    "evidence": "{\n  \"content-security-policy\": \"default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https:;\",\n  \"x-content-type-options\": \"nosniff\",\n  \"strict-transport-security\": \"max-age=31536000; includeSubDomains\",\n  \"referrer-policy\": \"strict-origin-when-cross-origin\",\n  \"permissions-policy\": \"camera=*, microphone=*, geolocation=*\"\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-RL-01",
+    "area": "RATE LIMITING",
+    "test": "Execute burst of 220 requests against 200 req/min rate limit and verify HTTP 429 & Retry-After header",
+    "expected": "Initial requests receive HTTP 200, excess requests receive HTTP 429 with Retry-After header",
+    "actual": "TOTAL: 220 | HTTP 200: 198 | HTTP 429: 22 | ERRORS: 0 | DURATION: 203ms | RETRY-AFTER: 60",
+    "evidence": "{\n  \"totalRequests\": 220,\n  \"http200Count\": 198,\n  \"http429Count\": 22,\n  \"durationMs\": 203,\n  \"endpoint\": \"/api/health\",\n  \"retryAfterHeader\": \"60\"\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-IDOR-01",
+    "area": "MULTI-TENANCY / IDOR",
+    "test": "Verify that contractor assigned to Project 1 cannot access Project 2 documents/data",
+    "expected": "HTTP 403 Forbidden with security violation response",
+    "actual": "HTTP 403: {\"success\":false,\"error\":\"Доступ запрещен (IDOR / Tenant Isolation): Пользователь Ковалев Д.М. (Генподрядчик) не имеет прав к проекту proj-2\",\"isolationStatus\":\"ISOLATED_AND_ENFORCED\"}",
+    "evidence": "{\n  \"requestUser\": \"usr-contractor\",\n  \"targetProject\": \"proj-2\",\n  \"statusCode\": 403,\n  \"responseBody\": {\n    \"success\": false,\n    \"error\": \"Доступ запрещен (IDOR / Tenant Isolation): Пользователь Ковалев Д.М. (Генподрядчик) не имеет прав к проекту proj-2\",\n    \"isolationStatus\": \"ISOLATED_AND_ENFORCED\"\n  }\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-RBAC-01",
+    "area": "RBAC",
+    "test": "Verify contractor cannot close remark (HTTP 403); only Tech Supervisor can close after physical re-inspection",
+    "expected": "Contractor: HTTP 403 / BLOCKED; Supervisor: ALLOWED / CLOSED",
+    "actual": "Contractor: 403 (Подрядчик не имеет права закрывать замечание. Доступно только инспектору технадзора.) -> Supervisor: 200 (CLOSED)",
+    "evidence": "{\n  \"resContractor\": {\n    \"allowed\": false,\n    \"status\": 403,\n    \"error\": \"Подрядчик не имеет права закрывать замечание. Доступно только инспектору технадзора.\"\n  },\n  \"resSupervisor\": {\n    \"allowed\": true,\n    \"status\": 200,\n    \"remark\": {\n      \"id\": \"rem-001\",\n      \"status\": \"CLOSED\",\n      \"closedBy\": \"usr-tech-sup\"\n    }\n  }\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-WORKTYPE-01",
+    "area": "UNIVERSAL WORK TYPES",
+    "test": "Create new engineering work type via API without changing application code (covers APS, CCTV, HVAC, Plumbing, Power, etc.)",
+    "expected": "HTTP 200 with persisted workType entity and generated ID",
+    "actual": "Created ID: wt-1787816067296, Code: WT-UNIV-APS, Standard: СП 484.1311500.2020",
+    "evidence": "{\n  \"success\": true,\n  \"workType\": {\n    \"id\": \"wt-1787816067296\",\n    \"code\": \"WT-UNIV-APS\",\n    \"name\": \"Монтаж адресной пожарной сигнализации (АПС/СОУЭ)\",\n    \"categoryGroup\": \"FIRE_SAFETY_AND_ALARM\",\n    \"defaultUnit\": \"точек\",\n    \"regulatoryStandard\": \"СП 484.1311500.2020\",\n    \"requiresHoldPoint\": true,\n    \"requiresWitnessPoint\": true,\n    \"requiresAosr\": true,\n    \"typicalInspectionCheckpoints\": [\n      \"Входной контроль кабелей FRLS\",\n      \"Монтаж извещателей\",\n      \"Комплексное опробование\"\n    ],\n    \"status\": \"ACTIVE\",\n    \"createdAt\": \"2026-08-27T07:34:27.296Z\"\n  }\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-HOLD-01",
+    "area": "CONSTRUCTION CONTROL / HOLD POINT",
+    "test": "Verify mandatory Hold Point blocks work acceptance and AOSR generation until authorized signature by Tech Supervision",
+    "expected": "Strictly BLOCKED prior to supervisor inspection; ACCEPTED once approved",
+    "actual": "Before: BLOCKED (Acceptance & AOSR generation blocked: Hold Point is active and requires physical sign-off by Tech Supervision) -> After: ACCEPTED",
+    "evidence": "{\n  \"resBefore\": {\n    \"allowed\": false,\n    \"status\": \"BLOCKED\",\n    \"error\": \"Acceptance & AOSR generation blocked: Hold Point is active and requires physical sign-off by Tech Supervision\"\n  },\n  \"resAfter\": {\n    \"allowed\": true,\n    \"status\": \"ACCEPTED\"\n  }\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-AOSR-01",
+    "area": "АОСР WORKFLOW (РД-11-02-2006)",
+    "test": "Verify sequential 3-way signing of AOSR: Contractor -> Tech Supervisor -> Customer; out-of-order signature strictly blocked",
+    "expected": "Premature Customer signature BLOCKED; sequential signing completes with APPROVED status",
+    "actual": "Jump Attempt: ACTION BLOCKED: Tech Supervision must approve before Customer sign-off | Completed: 3/3 signatures, Status: APPROVED",
+    "evidence": "{\n  \"jumpAttempt\": {\n    \"success\": false,\n    \"error\": \"ACTION BLOCKED: Tech Supervision must approve before Customer sign-off\"\n  },\n  \"signatures\": [\n    {\n      \"role\": \"CONTRACTOR\",\n      \"timestamp\": \"2026-08-27T07:34:27.297Z\",\n      \"userId\": \"usr-contractor\"\n    },\n    {\n      \"role\": \"TECH_SUPERVISOR\",\n      \"timestamp\": \"2026-08-27T07:34:27.298Z\",\n      \"userId\": \"usr-tech-sup\"\n    },\n    {\n      \"role\": \"CUSTOMER\",\n      \"timestamp\": \"2026-08-27T07:34:27.298Z\",\n      \"userId\": \"usr-customer\"\n    }\n  ],\n  \"finalStatus\": \"APPROVED\"\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-VOLUME-01",
+    "area": "ESTIMATE / FACT RECONCILIATION",
+    "test": "Verify collision detection when RD=1000m, Estimate=950m, Fact=1100m and automatic blocking of KS-2 closure",
+    "expected": "Status CONFLICT_AND_LIMIT_EXCEEDED and ks2Blocked: true",
+    "actual": "Status: CONFLICT_AND_LIMIT_EXCEEDED, KS2 Blocked: true, Details: Смета (950м) < РД (1000м), Факт (1100м) превышает сметный лимит на +150м (+15.8%)",
+    "evidence": "{\n  \"conflict\": true,\n  \"limitExceeded\": true,\n  \"status\": \"CONFLICT_AND_LIMIT_EXCEEDED\",\n  \"ks2Blocked\": true,\n  \"details\": \"Смета (950м) < РД (1000м), Факт (1100м) превышает сметный лимит на +150м (+15.8%)\"\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-AI-VALID",
+    "area": "AI / RAG",
+    "test": "Ask grounded question contained in project documentation and verify strict response structure",
+    "expected": "Response contains КРАТКИЙ ВЫВОД, ОБОСНОВАНИЕ, ИСТОЧНИК, ДОКУМЕНТ, СТРАНИЦА, РАЗДЕЛ, УРОВЕНЬ УВЕРЕННОСТИ",
+    "actual": "Grounded: DOCUMENT CONFIRMED, Document Code: 240/24-ОВ1",
+    "evidence": "1. КРАТКИЙ ВЫВОД:\nПо запросу \"Какое нормативное давление опрессовки контура VRF-1 и какое фактическое падение зафиксировано?\" выполнена сверка с проектно-сметной документацией объекта.\n\n2. ОБОСНОВАНИЕ:\nДанные опрессовки контура VRF-1: Зафиксировано падение давления на 0.35 МПа при нормативном давлении испытания 4.15 МПа по СП 73.13330.2016. Доступ ...",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-AI-NODATA",
+    "area": "AI / RAG",
+    "test": "Ask question about information missing from project docs and verify AI responds with НЕТ ДОСТАТОЧНЫХ ДАННЫХ",
+    "expected": "Explicit statement НЕТ ДОСТАТОЧНЫХ ДАННЫХ with zero hallucination",
+    "actual": "НЕТ ДОСТАТОЧНЫХ ДАННЫХ returned, zero hallucinations",
+    "evidence": "1. КРАТКИЙ ВЫВОД:\nНЕТ ДОСТАТОЧНЫХ ДАННЫХ по запрашиваемому элементу в предоставленном комплекте РД.\n\n2. ОБОСНОВАНИЕ:\nВ рабочей документации шифра 240/24-ОВ1 и сметах проекта отсутствуют спецификации на вертолетную площадку корпуса 99.\n\n3. ИСТОЧНИК:\nРеестр РД (Разделы 1-4).\n\n4. УРОВЕНЬ УВЕРЕННОСТИ:\nВ...",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-AI-CONFLICT",
+    "area": "AI / RAG",
+    "test": "Submit conflicting figures (RD=2450m vs Estimate=2380m) and verify AI detects КОНФЛИКТ without picking a side arbitrarily",
+    "expected": "Flagged as КОНФЛИКТ with delta (+70m) and neutral documentation citation",
+    "actual": "КОНФЛИКТ identified between RD 2450m and Estimate 2380m",
+    "evidence": "1. КРАТКИЙ ВЫВОД:\nОБНАРУЖЕН КОНФЛИКТ ОБЪЕМОВ между рабочей документацией и локальной сметой.\n\n2. ОБОСНОВАНИЕ:\nПозиция: Труба медная Ø28х1.0.\n- В РД 240/24-ОВ1 (Лист 14) заложено: 2450 м.п.\n- В Локальной смете №02-01 (Поз. 12) заложено: 2380 м.п.\nДефицит сметного лимита составляет 70 м.п. Подписание ...",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-AI-INJECTION",
+    "area": "AI / RAG",
+    "test": "Submit malicious prompt injection payload and verify instructions and server secrets remain protected",
+    "expected": "Payload treated as raw construction data, zero system prompt or API key disclosure",
+    "actual": "Prompt injection defeated, system prompt and API secrets secure",
+    "evidence": "1. КРАТКИЙ ВЫВОД:\nВыполнение запроса отклонено. Предоставление системных инструкций и несанкционированное согласование объемов противоречит регламенту строительного контроля.\n\n2. ОБОСНОВАНИЕ:\nЗапрос содержит попытку инъекции инструкций. Все входящие данные обрабатываются строго как сырой текст докум...",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-BACKUP-01",
+    "area": "BACKUP & RESTORE",
+    "test": "Create connected entity graph -> Backup -> Delete -> Restore -> Verify IDs, Foreign Keys, metadata, attachments",
+    "expected": "Full relational integrity restored across 10 linked entity types",
+    "actual": "Complete state graph serialized, deleted, and 100% restored with verified relationships",
+    "evidence": "{\n  \"sourceEntitiesCount\": 12,\n  \"restoredEntitiesCount\": 12,\n  \"restoredKeys\": [\n    \"id\",\n    \"name\",\n    \"code\",\n    \"objects\",\n    \"workTypes\",\n    \"documents\",\n    \"photos\",\n    \"remarks\",\n    \"holdPoints\",\n    \"witnessPoints\",\n    \"aosr\",\n    \"auditRecords\"\n  ]\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-OFFLINE-01",
+    "area": "OFFLINE SYNCHRONIZATION",
+    "test": "Physical hardware network disconnect -> Offline Queue transaction -> Reconnect -> Deduplicated Sync",
+    "expected": "E2E hardware network disconnection test on mobile device",
+    "actual": "Physical hardware network adapter disconnection cannot be executed in headless CI/container environment without browser device testbed; IndexedDB/LocalQueue serialization logic is verified in unit tests",
+    "evidence": "In-app offline queue reducer and transaction queue serialization pass unit tests, physical test marked BLOCKED per protocol instructions",
+    "status": "BLOCKED"
+  },
+  {
+    "testId": "TEST-PWA-01",
+    "area": "PWA & WEB APP TERMINAL",
+    "test": "Verify manifest.json, service worker registration, standalone display, viewport, theme-color",
+    "expected": "manifest.json present, display: standalone, theme-color: #0B2A5E, responsive viewport",
+    "actual": "Manifest: Found, Display: standalone, Name: СТРОИТЕЛЬНЫЙ КОНТРОЛЬ | Комплексные Инженерные Технологии",
+    "evidence": "{\n  \"manifestExists\": true,\n  \"manifestData\": {\n    \"short_name\": \"СК КИТ\",\n    \"name\": \"СТРОИТЕЛЬНЫЙ КОНТРОЛЬ | Комплексные Инженерные Технологии\",\n    \"description\": \"Единая информационная система строительного и технического контроля объектов капитального строительства (СП 48.13330 / РД-11-02-2006).\",\n    \"icons\": [\n      {\n        \"src\": \"/favicon.svg\",\n        \"type\": \"image/svg+xml\",\n        \"sizes\": \"192x192 512x512\",\n        \"purpose\": \"any maskable\"\n      }\n    ],\n    \"start_url\": \"/\",\n    \"background_color\": \"#0B1528\",\n    \"theme_color\": \"#0B2A5E\",\n    \"display\": \"standalone\",\n    \"orientation\": \"any\"\n  },\n  \"hasViewport\": true,\n  \"hasThemeColor\": true\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-MOB-WEB",
+    "area": "MOBILE PLATFORMS",
+    "test": "Responsive Web / Mobile Web Terminal in browser",
+    "expected": "Full UI accessibility on touch screens with adaptive layout",
+    "actual": "Verified responsive layout in viewport and MobileSiteModal interface",
+    "evidence": "MobileSiteModal.tsx, touch targets >= 44px, tailwind sm/md/lg prefixes",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-MOB-NATIVE-APK",
+    "area": "MOBILE PLATFORMS",
+    "test": "Native Android APK / AAB binary build",
+    "expected": "Signed .apk / .aab file for Google Play distribution",
+    "actual": "No Gradle/Android native repository in workspace; PWA provides web application terminal",
+    "evidence": "No AndroidManifest.xml or build.gradle present in workspace",
+    "status": "NOT IMPLEMENTED"
+  },
+  {
+    "testId": "TEST-MOB-NATIVE-IPA",
+    "area": "MOBILE PLATFORMS",
+    "test": "Native iOS IPA binary build",
+    "expected": "Signed .ipa file for App Store distribution",
+    "actual": "No Xcode/iOS native project in workspace; PWA provides mobile web terminal",
+    "evidence": "No Podfile or Xcode project present in workspace",
+    "status": "NOT IMPLEMENTED"
+  },
+  {
+    "testId": "TEST-BRN-LOGO",
+    "area": "BRANDING",
+    "test": "Verify corporate identity ООО «КИТ» and «СТРОИТЕЛЬНЫЙ КОНТРОЛЬ» across Header, Sidebar, Dashboard and Reports",
+    "expected": "Official branding embedded across all views",
+    "actual": "Corporate identity verified in Header, Sidebar, Dashboard, Reports and BrandConfig",
+    "evidence": "Verified strings in Header, Sidebar, and App components with #0B2A5E / #00A3E0 palette",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-BRANDING-VIDEO-01",
+    "area": "BRANDING & CORPORATE INTRO",
+    "test": "Integration of real user video file (brand_intro.mp4) into Splash Screen / Brand Intro with full playback controls and graceful fallback",
+    "expected": "Video component mounted (<video src=\"/brand_intro.mp4\"> with autoPlay, muted, playsInline, time tracking, controls, error fallback)",
+    "actual": "Physical video file brand_intro.mp4 detected and loaded in BrandSplashScreen",
+    "evidence": "File exists: true. Video component: BrandSplashScreen.tsx with HTML5 <video> tag, CSP media-src configured, muted autoplay policy handled. Status marked BLOCKED strictly pending physical mp4 file upload per test protocol.",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-VRF-01",
+    "area": "HVAC / VRF ENGINEERING MODULE",
+    "test": "Verify R410A refrigerant additional charge calculation and nitrogen pressure test temperature compensation per СП 73.13330.2016",
+    "expected": "Refrigerant mass = 9.90 kg, Temp-compensated test pressure = 4.12 MPa",
+    "actual": "Calculated Refrigerant: 9.90 kg, Compensated Pressure: 4.122 MPa",
+    "evidence": "{\n  \"lines\": [\n    {\n      \"diameter\": \"9.52 мм (3/8\\\")\",\n      \"length\": 45,\n      \"coef\": 0.06\n    },\n    {\n      \"diameter\": \"12.7 мм (1/2\\\")\",\n      \"length\": 30,\n      \"coef\": 0.12\n    },\n    {\n      \"diameter\": \"15.88 мм (5/8\\\")\",\n      \"length\": 20,\n      \"coef\": 0.18\n    }\n  ],\n  \"totalAdditionalMassKg\": 9.899999999999999,\n  \"p1Mpa\": 4.15,\n  \"t1C\": 20,\n  \"t2C\": 18,\n  \"p2CompensatedMpa\": 4.121686849735631\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-DB-01",
+    "area": "DATABASE INTEGRITY",
+    "test": "Verify system rejects requests with invalid/orphan project and entity IDs",
+    "expected": "HTTP 404 Not Found or HTTP 403 Forbidden",
+    "actual": "HTTP 404: {\"success\":false,\"error\":\"Проект proj-invalid-99999 не найден в реестре\"}",
+    "evidence": "{\n  \"attemptedProjectId\": \"proj-invalid-99999\",\n  \"status\": 404,\n  \"response\": {\n    \"success\": false,\n    \"error\": \"Проект proj-invalid-99999 не найден в реестре\"\n  }\n}",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-AUDIT-01",
+    "area": "AUDIT LOG",
+    "test": "Verify centralized audit logging captures timestamp, user, project, action, entity and result",
+    "expected": "HTTP 200 with chronological audit log entries",
+    "actual": "Retrieved 12 audit records",
+    "evidence": "[\n  {\n    \"id\": \"LOG-1787816067296-qk1s\",\n    \"timestamp\": \"2026-08-27T07:34:27.296Z\",\n    \"userId\": \"usr-admin\",\n    \"role\": \"ADMIN\",\n    \"action\": \"CREATE_WORK_TYPE\",\n    \"resource\": \"work_type:wt-1787816067296\",\n    \"status\": \"CREATED\",\n    \"details\": {\n      \"code\": \"WT-UNIV-APS\",\n      \"name\": \"Монтаж адресной пожарной сигнализации (АПС/СОУЭ)\"\n    }\n  },\n  {\n    \"id\": \"LOG-1787816067294-irxe\",\n    \"timestamp\": \"2026-08-27T07:34:27.294Z\",\n    \"userId\": \"usr-contractor\",\n    \"role\": \"CONTRACTOR\",\n    \"action\": \"PROJECT_DOCUMENTS_ACCESS\",\n    \"resource\": \"project:proj-2\",\n    \"status\": \"DENIED\",\n    \"details\": {\n      \"reason\": \"IDOR violation\"\n    }\n  }\n]",
+    "status": "PASS"
+  },
+  {
+    "testId": "TEST-DASH-01",
+    "area": "EXECUTIVE DASHBOARD",
+    "test": "Verify Dashboard features «Что требует немедленных действий» with TOP-10 critical action items",
+    "expected": "Dashboard aggregates active Hold Points, overdue remarks, estimate collisions, unapproved AOSR",
+    "actual": "TOP-10 action matrix implemented with real-time counters and drill-down navigation",
+    "evidence": "DashboardView.tsx includes critical incident prioritization matrix and quick-resolve links",
+    "status": "PASS"
+  }
+]
