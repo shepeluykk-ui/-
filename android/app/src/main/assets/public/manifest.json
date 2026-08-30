@@ -1,0 +1,18 @@
+{
+  "short_name": "СК-КИТ",
+  "name": "СК-КИТ — Строительный контроль",
+  "description": "СК-КИТ — Единая информационная система строительного и технического контроля объектов капитального строительства (СП 48.13330 / РД-11-02-2006).",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0B1528",
+  "theme_color": "#0B2A5E",
+  "display": "standalone",
+  "orientation": "any"
+}

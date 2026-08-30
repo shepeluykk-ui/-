@@ -352,21 +352,29 @@ export class ProjectCalculationEngine {
   ): AiConflictItem[] {
     const conflicts: AiConflictItem[] = [];
 
-    // Map extracted items by normalized name
-    const specMap = new Map<string, ProjectItemExtraction>();
-    extractedItems.forEach(item => {
-      const key = item.name.toLowerCase().trim();
-      specMap.set(key, item);
-    });
+    const normalizeTokens = (str: string) => {
+      return str
+        .toLowerCase()
+        .replace(/[хx]/g, 'x') // normalize cyrillic and latin x
+        .replace(/[øØ]/g, 'd')
+        .replace(/[^a-zа-я0-9]/gi, ' ')
+        .split(/\s+/)
+        .filter(t => t.length > 2);
+    };
 
     estimateItems.forEach(estItem => {
-      const estKey = estItem.workOrItemName.toLowerCase().trim();
+      const estTokens = normalizeTokens(estItem.workOrItemName);
 
-      // Look for matches or partial matches
-      for (const [specKey, specItem] of specMap.entries()) {
-        const isMatch = specKey.includes(estKey) || estKey.includes(specKey) ||
-          (specItem.brand && estKey.includes(specItem.brand.toLowerCase())) ||
-          (specItem.model && estKey.includes(specItem.model.toLowerCase()));
+      for (const specItem of extractedItems) {
+        const specTokens = normalizeTokens(specItem.name);
+        
+        // Count common significant tokens
+        const commonTokens = estTokens.filter(t => specTokens.includes(t));
+        const similarity = commonTokens.length / Math.max(1, Math.min(estTokens.length, specTokens.length));
+
+        const isMatch = similarity >= 0.5 ||
+          (specItem.brand && estItem.workOrItemName.toLowerCase().includes(specItem.brand.toLowerCase())) ||
+          (specItem.model && estItem.workOrItemName.toLowerCase().includes(specItem.model.toLowerCase()));
 
         if (isMatch && specItem.quantity !== estItem.quantity) {
           const deltaNum = estItem.quantity - specItem.quantity;

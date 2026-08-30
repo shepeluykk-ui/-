@@ -1,0 +1,23 @@
+<svg width="64" height="64" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#00C0FF" />
+      <stop offset="100%" stopColor="#0090D0" />
+    </linearGradient>
+    <linearGradient id="navyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#0B2A5E" />
+      <stop offset="100%" stopColor="#061A3A" />
+    </linearGradient>
+  </defs>
+  <path d="M200 24 L345 108 V292 L200 376 L55 292 V108 Z" stroke="url(#navyGrad)" stroke-width="22" stroke-linejoin="round" fill="#FFFFFF"/>
+  <g stroke="#00A3E0" stroke-width="8" stroke-linecap="round">
+    <path d="M100 280 L145 320 L165 320"/>
+    <circle cx="165" cy="320" r="6" fill="#00A3E0"/>
+    <path d="M300 280 L255 320 L235 320"/>
+    <circle cx="235" cy="320" r="6" fill="#00A3E0"/>
+    <path d="M200 45 V75"/>
+    <circle cx="200" cy="75" r="5" fill="#00A3E0"/>
+  </g>
+  <!-- Center Lightning -->
+  <path d="M216 115 L148 215 H196 L178 300 L254 195 H204 L216 115 Z" fill="url(#cyanGrad)" stroke="#0B2A5E" stroke-width="4" stroke-linejoin="round"/>
+</svg>

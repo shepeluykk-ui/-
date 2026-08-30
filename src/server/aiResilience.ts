@@ -4,7 +4,7 @@ import { GoogleGenAI } from '@google/genai';
  * AI Resilience, Circuit Breaker & Model Cascade Engine for SK-Kit
  * 
  * Implements:
- * 1. Multi-tier Model Cascade (gemini-2.5-flash -> gemini-3.7-flash -> gemini-3.1-flash-lite)
+ * 1. Multi-tier Model Cascade (gemini-3.7-flash -> gemini-3.1-flash-lite -> gemini-3.1-pro-preview)
  * 2. Circuit Breaker per Model (CLOSED, OPEN, HALF_OPEN)
  * 3. Strict Timeouts (5s per attempt, 15s global request deadline)
  * 4. Rate-Limit / 429 Quota Protection & Backoff
@@ -80,9 +80,9 @@ export const RESILIENCE_CONFIG = {
   PER_ATTEMPT_TIMEOUT_MS: 5000,
   MAX_CONCURRENT_AI_REQUESTS: 10,
   MODELS: [
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Primary)', enabled: true, perAttemptTimeoutMs: 5000 },
+    { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite (Primary)', enabled: true, perAttemptTimeoutMs: 5000 },
     { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash (Secondary)', enabled: true, perAttemptTimeoutMs: 5000 },
-    { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite (Tertiary)', enabled: true, perAttemptTimeoutMs: 5000 }
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (Tertiary / Reasoning)', enabled: true, perAttemptTimeoutMs: 5000 }
   ] as ModelConfig[],
   CIRCUIT_BREAKER: {
     failureThreshold: 2,
@@ -141,8 +141,8 @@ class ModelCircuitBreaker {
       // Fast-trip circuit on 429 quota exhaustion to prevent cascade pileups
       this.state = 'OPEN';
       this.openReason = `Quota exceeded (429): ${errorMsg}`;
-    } else if (errorClass === 'MODEL_NOT_FOUND' || errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('unavailable')) {
-      // Fast-trip circuit on 404 / unavailable model (isolated to this model)
+    } else if (errorClass === 'MODEL_NOT_FOUND' || errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('is not found')) {
+      // Fast-trip circuit on 404 / deprecated model (isolated to this model)
       this.state = 'OPEN';
       this.openReason = `Model unavailable / not found (404): ${errorMsg}`;
     } else if (this.state === 'HALF_OPEN') {
@@ -542,6 +542,13 @@ export class AiResilienceService {
 
   public clearChaos(): void {
     this.chaosMocks.clear();
+  }
+
+  public tripCircuit(modelId: string, reason: string): void {
+    const cb = this.circuitBreakers.get(modelId);
+    if (cb) {
+      cb.forceOpen(reason);
+    }
   }
 
   public getTelemetryLogs(): TelemetryLogEntry[] {

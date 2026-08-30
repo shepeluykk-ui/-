@@ -19,6 +19,7 @@ import {
   CircleDollarSign,
   ShieldAlert,
   Bot,
+  BrainCircuit,
   History,
   ShieldCheck,
   Database,
@@ -147,6 +148,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'AI & АНАЛИТИКА',
       items: [
+        { id: 'ai_project_analysis', label: 'AI-Анализ Проекта & Смета', icon: BrainCircuit, badge: 'MULTI-AGENT', badgeColor: 'bg-emerald-600 text-white font-bold' },
         { id: 'ai_assistant', label: 'AI Эксперт & Чат с РД', icon: Bot, badge: 'RAG', badgeColor: 'bg-neutral-900 text-white font-bold' }
       ]
     },

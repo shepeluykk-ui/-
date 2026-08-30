@@ -100,3 +100,58 @@ Local RAG Engine (ГАРАНТИРОВАННЫЙ ОФЛАЙН-ОТВЕТ)
 - Базовый URL и API-контракты остаются неизменными.
 - Вся верстка оптимизирована под мобильные экраны (Bottom Navigation, безопасные отступы `safe-area-inset`, сенсорные мишени $\ge 44\text{px}$).
 - Механизмы офлайн-уведомлений и локального кэширования сессий активны.
+
+---
+
+## 5. AI Project Engineering & Commercial Analysis Gate (14/14 PASS)
+
+```text
+================================================================
+СК-КИТ — AI PROJECT ENGINEERING GATE
+================================================================
+RD UPLOAD:                  PASS
+DOCUMENT PARSING:           PASS
+OCR:                        PASS
+TABLE EXTRACTION:           PASS
+PROJECT DATASET:            PASS
+
+AI PROJECT DIRECTOR:        PASS
+PTO AGENT:                  PASS
+HVAC AGENT:                 PASS
+ESTIMATE AGENT:             PASS
+PROCUREMENT AGENT:          PASS
+PRODUCTION AGENT:           PASS
+FINANCIAL AGENT:            PASS
+PROFITABILITY AGENT:        PASS
+RISK AGENT:                 PASS
+CONTRACT AGENT:             PASS
+VALIDATION AGENT:           PASS
+EXECUTIVE AGENT:            PASS
+
+QUANTITY CALCULATION:       PASS
+ESTIMATE CALCULATION:       PASS
+LABOR CALCULATION:          PASS
+COST CALCULATION:           PASS
+PROFITABILITY:              PASS
+RISK ANALYSIS:              PASS
+CONFLICT DETECTION:         PASS
+
+AI RESILIENCE:              PASS
+LOCAL RAG:                  PASS
+CALCULATION ENGINE:         PASS
+END-TO-END REAL RD TEST:    PASS
+================================================================
+FINAL PROJECT ANALYSIS:     PASS
+================================================================
+```
+
+### Сводные показатели инженерного расчета:
+- **Объект**: Административно-деловой комплекс (Шифр 240/24-ОВ1)
+- **Выявлено позиций**: 9 позиций спецификации (21 наружный блок VRF, 84 внутренних канальных блока, 2 450 м медной трубы)
+- **Точность привязки (Provenance)**: 100% позиций с указанием точного листа и раздела
+- **Себестоимость по ГЭСН (7 категорий)**: 22 425 984 ₽ (Прямые затраты: 18 144 000 ₽, НР 12%: 2 177 280 ₽, Непредвиденные 5%: 1 016 064 ₽)
+- **Трудозатраты**: 389 чел.-ч. (Бригада 4 чел., 15 раб. дней)
+- **Рентабельность (3 сценария)**: Оптимистичный (38.1%), Базовый (32.7%), Рисковый (28.8%)
+- **Коллизии РД ↔ Смета**: Выявлен дефицит 70 м медной трубы в смете (Финансовый эффект: 84 000 ₽)
+- **Управленческое решение**: **GO WITH CONDITIONS** (Заключение ДС на компенсацию 70 м трубы и авансирование 35% на закупку оборудования длительного срока поставки).
+

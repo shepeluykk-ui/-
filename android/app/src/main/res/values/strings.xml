@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">СК-КИТ</string>
+    <string name="title_activity_main">СК-КИТ</string>
+    <string name="package_name">ru.skkit.stroycontrol</string>
+    <string name="custom_url_scheme">ru.skkit.stroycontrol</string>
+</resources>

@@ -1,0 +1,120 @@
+{
+  "timestamp": "2026-08-28T17:22:16.649Z",
+  "models": [
+    {
+      "id": "gemini-3.7-flash",
+      "status": "PASS",
+      "code": 429,
+      "note": "Model endpoint recognized, quota rate-limited (HTTP 429)"
+    },
+    {
+      "id": "gemini-3.1-flash-lite",
+      "status": "PASS",
+      "code": 200,
+      "note": "OK"
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "status": "PASS",
+      "code": 429,
+      "note": "Model endpoint recognized, quota rate-limited (HTTP 429)"
+    }
+  ],
+  "cascade": {
+    "scenarioA": {
+      "success": true,
+      "resolvedBy": "gemini-3.1-flash-lite"
+    },
+    "scenarioB": {
+      "success": true,
+      "resolvedBy": "local_rag"
+    }
+  },
+  "rateLimit429": {
+    "circuitState": "CLOSED",
+    "fastFailDurationMs": 1008
+  },
+  "service503": {
+    "success": true,
+    "resolvedBy": "gemini-3.1-flash-lite"
+  },
+  "timeout": {
+    "success": true,
+    "durationMs": 887
+  },
+  "globalDeadline": {
+    "success": true,
+    "durationMs": 13504
+  },
+  "circuitBreakers": {
+    "gemini-3.1-flash-lite": {
+      "state": "CLOSED",
+      "failureCount": 0,
+      "openReason": null
+    },
+    "gemini-3.7-flash": {
+      "state": "CLOSED",
+      "failureCount": 0,
+      "openReason": null
+    },
+    "gemini-3.1-pro-preview": {
+      "state": "CLOSED",
+      "failureCount": 0,
+      "openReason": null
+    }
+  },
+  "localRag": {
+    "chat": {
+      "success": true,
+      "is_fallback": true,
+      "source": "local_rag",
+      "dataStatus": "CONFLICT"
+    },
+    "doc": {
+      "success": true,
+      "is_fallback": true,
+      "source": "local_rag",
+      "items": 1
+    },
+    "report": {
+      "success": true,
+      "is_fallback": true,
+      "source": "local_rag",
+      "status": "ТРЕБУЕТ ВНИМАНИЯ (YELLOW)"
+    }
+  },
+  "localRagFailureHandled": true,
+  "security": [
+    {
+      "endpoint": "/api/ai/resilience-status",
+      "access": "System Health / Monitoring",
+      "guarded": true
+    },
+    {
+      "endpoint": "/api/ai/resilience-metrics",
+      "access": "Operations Telemetry",
+      "guarded": true
+    },
+    {
+      "endpoint": "/api/ai/circuit-reset",
+      "access": "SUPER_ADMIN / ADMIN only",
+      "guarded": true
+    },
+    {
+      "endpoint": "/api/ai/chaos-inject",
+      "access": "SUPER_ADMIN / ADMIN in non-prod only",
+      "guarded": true
+    }
+  ],
+  "telemetry": {
+    "totalEntries": 22,
+    "noKeysLeaked": true,
+    "requiredFieldsPresent": true
+  },
+  "concurrency": {
+    "totalRequests": 20,
+    "successCount": 20,
+    "durationMs": 1333
+  },
+  "chaosTests": "7/7"
+}

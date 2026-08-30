@@ -70,6 +70,7 @@ export class ProjectAnalysisOrchestrator {
     documentsContent?: { id: string; title: string; code: string; section: string; content?: string }[];
     contractPriceRub?: number;
     autoTriggered?: boolean;
+    waitForCompletion?: boolean;
   }): Promise<ProjectAnalysisJob> {
     const analysisId = `job-ai-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
@@ -188,8 +189,7 @@ export class ProjectAnalysisOrchestrator {
     analysisJobsStore.set(analysisId, initialJob);
     projectToLatestJobMap.set(params.projectId, analysisId);
 
-    // Run pipeline asynchronously so caller gets immediate response
-    this.executePipeline(analysisId, params).catch(err => {
+    const pipelinePromise = this.executePipeline(analysisId, params).catch(err => {
       console.error(`[ProjectAnalysisOrchestrator] Pipeline failed for ${analysisId}:`, err);
       const job = analysisJobsStore.get(analysisId);
       if (job) {
@@ -198,6 +198,11 @@ export class ProjectAnalysisOrchestrator {
         job.updatedAt = new Date().toISOString();
       }
     });
+
+    if (params.waitForCompletion) {
+      await pipelinePromise;
+      return analysisJobsStore.get(analysisId) || initialJob;
+    }
 
     return initialJob;
   }

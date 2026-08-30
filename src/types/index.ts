@@ -209,6 +209,8 @@ export interface DocumentVersion {
   status: DocumentStatus;
   approvedBy?: string;
   approvedAt?: string;
+  sha256?: string;
+  storagePath?: string;
 }
 
 export interface ProjectDocument {
@@ -230,6 +232,7 @@ export interface ProjectDocument {
   conflictNotes?: string;
   createdAt: string;
   updatedAt: string;
+  sha256?: string;
 }
 
 // 6. Спецификации и Сметы (Estimates & Volumes)

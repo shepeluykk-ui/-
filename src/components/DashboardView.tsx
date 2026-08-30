@@ -14,7 +14,8 @@ import {
   Flame,
   Camera,
   Layers,
-  ChevronRight
+  ChevronRight,
+  BrainCircuit
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -131,6 +132,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpen
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onNavigate('ai_project_analysis')}
+            className="flex items-center gap-1.5 rounded-lg bg-emerald-700 text-white px-3.5 py-2 text-xs font-semibold hover:bg-emerald-800 transition-colors shadow-xs cursor-pointer min-h-[40px]"
+          >
+            <BrainCircuit className="h-3.5 w-3.5" />
+            AI-Анализ Проекта & Смета
+          </button>
+
           <button
             onClick={() => onNavigate('construction_control')}
             className="flex items-center gap-1.5 rounded-lg bg-neutral-900 text-white px-3.5 py-2 text-xs font-semibold hover:bg-neutral-800 transition-colors shadow-xs cursor-pointer min-h-[40px]"

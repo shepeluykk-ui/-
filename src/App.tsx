@@ -20,6 +20,7 @@ import { ContractorsView } from './components/ContractorsView';
 import { FinanceView } from './components/FinanceView';
 import { RisksView } from './components/RisksView';
 import { AiAssistantView } from './components/AiAssistantView';
+import { AiProjectAnalysisView } from './components/AiProjectAnalysisView';
 import { AuditLogView } from './components/AuditLogView';
 import { SecurityRedTeamView } from './components/SecurityRedTeamView';
 import { BackupRestoreView } from './components/BackupRestoreView';
@@ -32,10 +33,11 @@ import { AdminRegistrationRequests } from './components/AdminRegistrationRequest
 // Modals & Auth
 import { MobileSiteModal } from './components/MobileSiteModal';
 import { ManagerReportModal } from './components/ManagerReportModal';
+import { SuperAdminRegistrationAlertModal } from './components/SuperAdminRegistrationAlertModal';
 import { LoginScreen } from './components/LoginScreen';
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, authLoading } = useApp();
+  const { isAuthenticated, authLoading, pendingAlertRequest, dismissPendingAlert } = useApp();
   const [activeModule, setActiveModule] = useState<SystemModule>('dashboard');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showMobileModal, setShowMobileModal] = useState(false);
@@ -107,6 +109,8 @@ const AppContent: React.FC = () => {
         return <RisksView />;
       case 'ai_assistant':
         return <AiAssistantView />;
+      case 'ai_project_analysis':
+        return <AiProjectAnalysisView />;
       case 'audit_log':
         return <AuditLogView />;
       case 'registration_requests':
@@ -185,6 +189,18 @@ const AppContent: React.FC = () => {
       {/* Executive Report Modal */}
       {showReportModal && (
         <ManagerReportModal onClose={() => setShowReportModal(false)} />
+      )}
+
+      {/* Super Admin Global Real-Time Registration Alert Modal */}
+      {pendingAlertRequest && (
+        <SuperAdminRegistrationAlertModal
+          request={pendingAlertRequest}
+          onClose={() => dismissPendingAlert(pendingAlertRequest.id)}
+          onNavigateToRequests={() => {
+            setActiveModule('registration_requests');
+            setIsDrawerOpen(false);
+          }}
+        />
       )}
     </div>
   );

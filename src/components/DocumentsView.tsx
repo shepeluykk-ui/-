@@ -15,7 +15,12 @@ import {
   Loader2,
   XCircle,
   FileCheck,
-  Smartphone
+  Smartphone,
+  Download,
+  ShieldCheck,
+  FileSpreadsheet,
+  FileCode,
+  ExternalLink
 } from 'lucide-react';
 
 export const DocumentsView: React.FC = () => {
@@ -24,6 +29,11 @@ export const DocumentsView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedDoc, setSelectedDoc] = useState<ProjectDocument | null>(documents[0] || null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [viewingDoc, setViewingDoc] = useState<{
+    doc: ProjectDocument;
+    version?: any;
+    isDownload?: boolean;
+  } | null>(null);
 
   // Upload Form & File State
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -369,6 +379,12 @@ export const DocumentsView: React.FC = () => {
                     <span className="text-xs font-semibold text-neutral-500">
                       Ревизия: {selectedDoc.currentRevision}
                     </span>
+                    {selectedDoc.sha256 && (
+                      <span className="flex items-center gap-1 text-[10px] font-mono bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
+                        <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                        SHA-256: {selectedDoc.sha256.substring(0, 10)}…
+                      </span>
+                    )}
                   </div>
                   <h3 className="text-base font-bold text-neutral-900 mt-2">
                     {selectedDoc.title}
@@ -378,23 +394,44 @@ export const DocumentsView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Approve/Reject Buttons for Chief Engineer / Construction Control */}
-                {can('APPROVE', 'documents') && selectedDoc.status !== 'APPROVED' && (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => updateDocumentStatus(selectedDoc.id, 'APPROVED')}
-                      className="rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-xs font-bold hover:bg-emerald-700 transition-colors shadow-xs cursor-pointer"
-                    >
-                      Поставить штамп «В производство»
-                    </button>
-                    <button
-                      onClick={() => updateDocumentStatus(selectedDoc.id, 'REJECTED')}
-                      className="rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-1.5 text-xs font-bold hover:bg-red-100 transition-colors cursor-pointer"
-                    >
-                      Отклонить
-                    </button>
-                  </div>
-                )}
+                {/* Primary Actions (View & Download) + Approval Controls */}
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <a
+                    href={`/api/documents/${selectedDoc.id}/download`}
+                    download
+                    className="flex items-center gap-1.5 rounded-lg bg-neutral-900 text-white px-3 py-1.5 text-xs font-bold hover:bg-neutral-800 transition-colors shadow-xs cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Скачать файл</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => setViewingDoc({ doc: selectedDoc, version: selectedDoc.versions[0] })}
+                    className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white text-neutral-800 px-3 py-1.5 text-xs font-bold hover:bg-neutral-50 transition-colors cursor-pointer"
+                  >
+                    <Eye className="h-3.5 w-3.5 text-neutral-600" />
+                    <span>Просмотр</span>
+                  </button>
+
+                  {/* Approve/Reject Buttons for Chief Engineer / Construction Control */}
+                  {can('APPROVE', 'documents') && selectedDoc.status !== 'APPROVED' && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => updateDocumentStatus(selectedDoc.id, 'APPROVED')}
+                        className="rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-xs font-bold hover:bg-emerald-700 transition-colors shadow-xs cursor-pointer"
+                      >
+                        В производство
+                      </button>
+                      <button
+                        onClick={() => updateDocumentStatus(selectedDoc.id, 'REJECTED')}
+                        className="rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-1.5 text-xs font-bold hover:bg-red-100 transition-colors cursor-pointer"
+                      >
+                        Отклонить
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Conflict Callout */}
@@ -442,14 +479,19 @@ export const DocumentsView: React.FC = () => {
 
                 <div className="divide-y divide-neutral-100 border border-neutral-200 rounded-lg overflow-hidden">
                   {selectedDoc.versions.map((ver, idx) => (
-                    <div key={idx} className="p-3 bg-white hover:bg-neutral-50 flex items-center justify-between text-xs">
+                    <div key={idx} className="p-3 bg-white hover:bg-neutral-50 flex items-center justify-between text-xs gap-3">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-neutral-900">{ver.revision}</span>
                           <span className="text-[11px] text-neutral-500 font-mono">({ver.fileName})</span>
                           <span className="text-[10px] bg-neutral-100 text-neutral-700 px-1.5 py-0.2 rounded font-semibold">
                             {ver.status}
                           </span>
+                          {ver.sha256 && (
+                            <span className="text-[9px] font-mono text-neutral-500 bg-neutral-50 border border-neutral-200 px-1.5 py-0.2 rounded">
+                              SHA-256: {ver.sha256.substring(0, 8)}…
+                            </span>
+                          )}
                         </div>
                         <p className="mt-1 text-[11px] text-neutral-600">{ver.changeDescription}</p>
                         <div className="mt-1 text-[10px] text-neutral-400">
@@ -457,12 +499,23 @@ export const DocumentsView: React.FC = () => {
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => alert(`Просмотр файла ${ver.fileName} (Интегрированный вьюер PDF/DWG)`)}
-                        className="flex items-center gap-1 text-xs font-semibold text-neutral-800 border border-neutral-200 px-2.5 py-1 rounded hover:bg-neutral-100 cursor-pointer"
-                      >
-                        <Eye className="h-3.5 w-3.5" /> Открыть
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setViewingDoc({ doc: selectedDoc, version: ver })}
+                          className="flex items-center gap-1 text-xs font-semibold text-neutral-800 border border-neutral-200 px-2.5 py-1 rounded hover:bg-neutral-100 cursor-pointer"
+                        >
+                          <Eye className="h-3.5 w-3.5" /> Открыть
+                        </button>
+                        <a
+                          href={`/api/documents/${selectedDoc.id}/versions/${ver.versionNumber}/download`}
+                          download={ver.fileName}
+                          className="flex items-center gap-1 text-xs font-semibold text-neutral-800 border border-neutral-200 px-2.5 py-1 rounded hover:bg-neutral-100 cursor-pointer"
+                          title="Скачать исходный файл версии"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </a>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -485,6 +538,198 @@ export const DocumentsView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* In-App Document Viewer & Verification Modal */}
+      {viewingDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl overflow-hidden my-4 flex flex-col max-h-[90vh] animate-in fade-in">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 bg-neutral-900 text-white">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-neutral-800 text-neutral-200">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-xs bg-neutral-700 px-2 py-0.5 rounded">
+                      {viewingDoc.doc.code}
+                    </span>
+                    <span className="text-xs text-neutral-300">
+                      {viewingDoc.version?.revision || viewingDoc.doc.currentRevision}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-bold text-white mt-0.5">
+                    {viewingDoc.doc.title}
+                  </h3>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={`/api/documents/${viewingDoc.doc.id}/download`}
+                  download={viewingDoc.version?.fileName || viewingDoc.doc.fileName}
+                  className="flex items-center gap-1.5 rounded-lg bg-white text-neutral-900 px-3 py-1.5 text-xs font-bold hover:bg-neutral-100 transition-colors cursor-pointer"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Скачать файл</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setViewingDoc(null)}
+                  className="text-neutral-400 hover:text-white p-1 text-lg leading-none cursor-pointer rounded-lg hover:bg-neutral-800"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Inline Viewer or Format Handler */}
+            <div className="p-6 overflow-y-auto flex-1 bg-neutral-50">
+              {/* Technical Metadata & Integrity Bar */}
+              <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                <div className="p-3 bg-white border border-neutral-200 rounded-xl">
+                  <span className="text-[10px] uppercase font-bold text-neutral-400 block">Имя файла</span>
+                  <span className="font-mono text-neutral-800 break-all font-semibold">
+                    {viewingDoc.version?.fileName || viewingDoc.doc.fileName || `${viewingDoc.doc.code}.pdf`}
+                  </span>
+                </div>
+                <div className="p-3 bg-white border border-neutral-200 rounded-xl">
+                  <span className="text-[10px] uppercase font-bold text-neutral-400 block">Размер / Страниц</span>
+                  <span className="font-medium text-neutral-800">
+                    {viewingDoc.version?.fileSizeMb || viewingDoc.doc.fileSizeMb || 1.0} МБ • {viewingDoc.doc.pagesCount || 1} стр.
+                  </span>
+                </div>
+                <div className="p-3 bg-white border border-neutral-200 rounded-xl">
+                  <span className="text-[10px] uppercase font-bold text-neutral-400 block">Контрольная сумма SHA-256</span>
+                  <span className="font-mono text-[11px] text-emerald-700 font-semibold break-all">
+                    {viewingDoc.doc.sha256 || viewingDoc.version?.sha256 || 'Вычислена при физическом сохранении'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Viewer Preview Area */}
+              {(() => {
+                const fileName = (viewingDoc.version?.fileName || viewingDoc.doc.fileName || '').toLowerCase();
+                const isPdf = fileName.endsWith('.pdf');
+                const isImg = fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png') || fileName.endsWith('.webp');
+                const isDwg = fileName.endsWith('.dwg') || fileName.endsWith('.dxf');
+                const isExcel = fileName.endsWith('.xls') || fileName.endsWith('.xlsx') || fileName.endsWith('.csv');
+
+                if (isPdf) {
+                  return (
+                    <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden shadow-xs h-[500px] flex flex-col">
+                      <div className="p-2 bg-neutral-100 border-b border-neutral-200 flex items-center justify-between text-xs text-neutral-600 px-4">
+                        <span className="font-medium">Встроенный просмотр PDF-документа</span>
+                        <a
+                          href={`/api/documents/${viewingDoc.doc.id}/view`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1 text-neutral-900 font-semibold hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" /> Во весь экран
+                        </a>
+                      </div>
+                      <iframe
+                        src={`/api/documents/${viewingDoc.doc.id}/view`}
+                        title={viewingDoc.doc.title}
+                        className="w-full flex-1 border-0"
+                      />
+                    </div>
+                  );
+                }
+
+                if (isImg) {
+                  return (
+                    <div className="rounded-xl border border-neutral-200 bg-white p-4 text-center shadow-xs">
+                      <img
+                        src={`/api/documents/${viewingDoc.doc.id}/view`}
+                        alt={viewingDoc.doc.title}
+                        className="max-h-[500px] mx-auto rounded-lg object-contain shadow-xs"
+                      />
+                    </div>
+                  );
+                }
+
+                if (isDwg) {
+                  return (
+                    <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center space-y-4 shadow-xs">
+                      <div className="mx-auto w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <FileCode className="h-8 w-8" />
+                      </div>
+                      <div className="max-w-md mx-auto">
+                        <h4 className="font-bold text-neutral-900 text-sm">Чертеж САПР / CAD (.DWG / .DXF)</h4>
+                        <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
+                          Бинарный файл чертежа сохранен в защищенном архиве. Для редактирования и полноценного просмотра слоев откройте файл в специализированном ПО (AutoCAD, nanoCAD, Autodesk Viewer).
+                        </p>
+                      </div>
+                      <div className="pt-2">
+                        <a
+                          href={`/api/documents/${viewingDoc.doc.id}/download`}
+                          download={viewingDoc.version?.fileName || viewingDoc.doc.fileName}
+                          className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 text-white px-5 py-2.5 text-xs font-bold hover:bg-neutral-800 shadow-xs cursor-pointer"
+                        >
+                          <Download className="h-4 w-4" />
+                          <span>Скачать исходный DWG</span>
+                        </a>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (isExcel) {
+                  return (
+                    <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center space-y-4 shadow-xs">
+                      <div className="mx-auto w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <FileSpreadsheet className="h-8 w-8" />
+                      </div>
+                      <div className="max-w-md mx-auto">
+                        <h4 className="font-bold text-neutral-900 text-sm">Таблица спецификаций / Смета (.XLSX)</h4>
+                        <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
+                          Файл ведомости объемов и сметных расчетов сохранен. Скачайте исходную таблицу для детальной обработки в MS Excel или МойОфис.
+                        </p>
+                      </div>
+                      <div className="pt-2">
+                        <a
+                          href={`/api/documents/${viewingDoc.doc.id}/download`}
+                          download={viewingDoc.version?.fileName || viewingDoc.doc.fileName}
+                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white px-5 py-2.5 text-xs font-bold hover:bg-emerald-800 shadow-xs cursor-pointer"
+                        >
+                          <Download className="h-4 w-4" />
+                          <span>Скачать таблицу Excel</span>
+                        </a>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center space-y-4 shadow-xs">
+                    <div className="mx-auto w-16 h-16 rounded-2xl bg-neutral-100 text-neutral-700 flex items-center justify-center">
+                      <FileText className="h-8 w-8" />
+                    </div>
+                    <div className="max-w-md mx-auto">
+                      <h4 className="font-bold text-neutral-900 text-sm">Документ зарегистрирован в электронном архиве</h4>
+                      <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
+                        Исходный бинарный файл сохранен с контрольной суммой и доступен для загрузки.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <a
+                        href={`/api/documents/${viewingDoc.doc.id}/download`}
+                        download={viewingDoc.version?.fileName || viewingDoc.doc.fileName}
+                        className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 text-white px-5 py-2.5 text-xs font-bold hover:bg-neutral-800 shadow-xs cursor-pointer"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span>Скачать исходный файл</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Document Modal (Supports Native File Picker, Touch Button & Desktop Drag-and-Drop) */}
       {showUploadModal && (

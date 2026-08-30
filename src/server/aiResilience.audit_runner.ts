@@ -12,7 +12,7 @@ async function runAndSaveAudit() {
   const modelsData: any[] = [];
   if (apiKey) {
     const ai = new GoogleGenAI({ apiKey });
-    for (const m of ['gemini-2.5-flash', 'gemini-3.7-flash', 'gemini-3.1-flash-lite']) {
+    for (const m of ['gemini-3.7-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview']) {
       try {
         const resp = await ai.models.generateContent({ model: m, contents: 'Say OK' });
         modelsData.push({ id: m, status: 'PASS', code: 200, note: resp.text?.trim().slice(0, 30) });
@@ -31,55 +31,55 @@ async function runAndSaveAudit() {
 
   // 2. Cascade Verification
   service.resetCircuitBreakers();
-  service.injectChaos('gemini-2.5-flash', 'RETRYABLE_QUOTA_429', 429);
+  service.injectChaos('gemini-3.7-flash', 'RETRYABLE_QUOTA_429', 429);
   const cascadeA = await service.executeStructured('/api/ai/chat', 'aud-casc-A', 'prompt', { fallbackFn: () => ({ ok: 'casc-A' }) });
 
   service.resetCircuitBreakers();
-  service.injectChaos('gemini-2.5-flash', 'RETRYABLE_SERVICE_503', 503);
   service.injectChaos('gemini-3.7-flash', 'RETRYABLE_SERVICE_503', 503);
+  service.injectChaos('gemini-3.1-flash-lite', 'RETRYABLE_SERVICE_503', 503);
   const cascadeB = await service.executeStructured('/api/ai/chat', 'aud-casc-B', 'prompt', { fallbackFn: () => ({ ok: 'casc-B' }) });
 
   // 3. 429 Fast-fail & Circuit Trip
   service.resetCircuitBreakers();
-  service.injectChaos('gemini-2.5-flash', 'RETRYABLE_QUOTA_429', 429);
+  service.injectChaos('gemini-3.7-flash', 'RETRYABLE_QUOTA_429', 429);
   await service.executeStructured('/api/ai/chat', 'aud-429-1', 'prompt', { fallbackFn: () => ({}) });
-  const cb25 = service.getCircuitStatuses()['gemini-2.5-flash'];
+  const cb37 = service.getCircuitStatuses()['gemini-3.7-flash'];
   const t0_skip = Date.now();
   await service.executeStructured('/api/ai/chat', 'aud-429-2', 'prompt', { fallbackFn: () => ({}) });
   const skipLatency = Date.now() - t0_skip;
 
   // 4. 503 Recovery
   service.resetCircuitBreakers();
-  service.injectChaos('gemini-2.5-flash', 'RETRYABLE_SERVICE_503', 503);
+  service.injectChaos('gemini-3.7-flash', 'RETRYABLE_SERVICE_503', 503);
   const res503 = await service.executeStructured('/api/ai/analyze-document', 'aud-503', 'prompt', { fallbackFn: () => ({ items: [] }) });
 
   // 5. Attempt Timeout <= 5000ms
   service.resetCircuitBreakers();
-  service.injectChaos('gemini-2.5-flash', 'RETRYABLE_TIMEOUT', 504, 5200);
+  service.injectChaos('gemini-3.7-flash', 'RETRYABLE_TIMEOUT', 504, 5200);
   const t0_to = Date.now();
   const resTo = await service.executeStructured('/api/ai/chat', 'aud-to', 'prompt', { fallbackFn: () => ({}) });
   const timeoutMs = Date.now() - t0_to;
 
   // 6. Global Deadline <= 15000ms
   service.resetCircuitBreakers();
-  service.injectChaos('gemini-2.5-flash', 'RETRYABLE_TIMEOUT', 504, 4500);
   service.injectChaos('gemini-3.7-flash', 'RETRYABLE_TIMEOUT', 504, 4500);
   service.injectChaos('gemini-3.1-flash-lite', 'RETRYABLE_TIMEOUT', 504, 4500);
+  service.injectChaos('gemini-3.1-pro-preview', 'RETRYABLE_TIMEOUT', 504, 4500);
   const t0_dl = Date.now();
   const resDl = await service.executeStructured('/api/ai/chat', 'aud-dl', 'prompt', { fallbackFn: () => ({ fallback: true }) });
   const deadlineMs = Date.now() - t0_dl;
 
   // 7 & 8. Circuit Breakers & Per-Model Isolation
   service.resetCircuitBreakers();
-  service.injectChaos('gemini-2.5-flash', 'RETRYABLE_QUOTA_429', 429);
+  service.injectChaos('gemini-3.7-flash', 'RETRYABLE_QUOTA_429', 429);
   await service.executeStructured('/api/ai/chat', 'aud-iso', 'prompt', { fallbackFn: () => ({}) });
   const cbStatuses = service.getCircuitStatuses();
 
   // 9 & 10. Local RAG Fallback
   service.resetCircuitBreakers();
-  service.injectChaos('gemini-2.5-flash', 'RETRYABLE_QUOTA_429', 429);
-  service.injectChaos('gemini-3.7-flash', 'RETRYABLE_SERVICE_503', 503);
-  service.injectChaos('gemini-3.1-flash-lite', 'RETRYABLE_SERVER_ERROR', 500);
+  service.injectChaos('gemini-3.7-flash', 'RETRYABLE_QUOTA_429', 429);
+  service.injectChaos('gemini-3.1-flash-lite', 'RETRYABLE_SERVICE_503', 503);
+  service.injectChaos('gemini-3.1-pro-preview', 'RETRYABLE_SERVER_ERROR', 500);
 
   const ragChat = await service.executeStructured('/api/ai/chat', 'rag-chat', 'prompt', {
     fallbackFn: () => ({
@@ -148,7 +148,7 @@ async function runAndSaveAudit() {
       scenarioB: { success: cascadeB.success, resolvedBy: cascadeB.model || cascadeB.ai_source }
     },
     rateLimit429: {
-      circuitState: cb25?.state,
+      circuitState: cb37?.state,
       fastFailDurationMs: skipLatency
     },
     service503: {

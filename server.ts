@@ -2,14 +2,24 @@ import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import multer from 'multer';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 import { AiResilienceService, RESILIENCE_CONFIG } from './src/server/aiResilience';
+import { ProjectAnalysisOrchestrator } from './src/server/projectAnalysisOrchestrator';
+import { FileStorageManager } from './src/server/fileStorage';
+import { OtpTransportManager } from './src/server/otpTransport';
 
 dotenv.config();
 
 const PORT = 3000;
 const app = express();
+
+// Multer in-memory upload processor with 100MB limit for binary documents
+const multerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
 
 // Security Headers Middleware (Production Hardening)
 app.use((req, res, next) => {
@@ -319,14 +329,10 @@ registrationRequestsStore.set('reg-002', {
 // Notification Adapter / Service (Email & SMS Delivery)
 const NotificationService = {
   sendRegistrationOtp: async (params: { email: string; phone: string; code: string; fullName: string }) => {
-    // In production, this dispatches via SMTP / SMS Gateway (e.g. SendGrid, SMS.RU)
-    console.log(`[NOTIFICATION_ADAPTER] Dispatching 6-digit OTP to ${params.email} (${params.phone}) for ${params.fullName}`);
-    return {
-      success: true,
-      channel: 'EMAIL' as const,
-      timestamp: new Date().toISOString(),
-      recipient: params.email
-    };
+    return await OtpTransportManager.dispatchOtp(params);
+  },
+  getTransportStatus: () => {
+    return OtpTransportManager.isTransportConfigured();
   }
 };
 
@@ -633,7 +639,7 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
   request.notificationChannel = 'EMAIL';
 
   // Dispatch via Notification Adapter
-  await NotificationService.sendRegistrationOtp({
+  const dispatchResult = await NotificationService.sendRegistrationOtp({
     email: request.email,
     phone: request.phone,
     code: otpCode,
@@ -647,17 +653,24 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
     approvedBy: adminUser.fullName || adminUser.name
   });
 
-  logAudit('system', 'NOTIFICATION_ADAPTER', 'OTP_DISPATCH', `registration:${request.id}`, 'SUCCESS', {
-    channel: 'EMAIL',
-    recipient: request.email,
+  logAudit('system', 'NOTIFICATION_ADAPTER', 'OTP_DISPATCH', `registration:${request.id}`, dispatchResult.status === 'FAILED' ? 'FAILED' : 'SUCCESS', {
+    channel: dispatchResult.channel,
+    recipient: dispatchResult.recipientMasked,
+    delivered: dispatchResult.delivered,
+    transportStatus: dispatchResult.status,
     expiresAt
   });
 
   return res.json({
     success: true,
-    message: 'Ваша регистрация одобрена. Код подтверждения отправлен на указанный e-mail.',
+    message: dispatchResult.delivered
+      ? `Ваша регистрация одобрена. Код подтверждения отправлен на ${dispatchResult.recipientMasked}.`
+      : 'Ваша регистрация одобрена. Код подтверждения сформирован (DEV MODE: внешний транспорт не настроен).',
     requestId: request.id,
     status: request.status,
+    transport: dispatchResult.status,
+    deliveryChannel: dispatchResult.channel,
+    delivered: dispatchResult.delivered,
     // Provide dev hint in non-production payload for convenience of automated browser tests
     devOtp: otpCode
   });
@@ -757,21 +770,28 @@ app.post('/api/auth/resend-code', async (req, res) => {
   request.otpLastSentAt = new Date().toISOString();
   request.attemptsCount = 0;
 
-  await NotificationService.sendRegistrationOtp({
+  const dispatchResult = await NotificationService.sendRegistrationOtp({
     email: request.email,
     phone: request.phone,
     code: newOtp,
     fullName: request.fullName
   });
 
-  logAudit('anonymous', 'GUEST', 'OTP_RESEND', `registration:${request.id}`, 'SUCCESS', {
-    email: request.email,
-    recipient: request.email
+  logAudit('anonymous', 'GUEST', 'OTP_RESEND', `registration:${request.id}`, dispatchResult.status === 'FAILED' ? 'FAILED' : 'SUCCESS', {
+    channel: dispatchResult.channel,
+    recipient: dispatchResult.recipientMasked,
+    delivered: dispatchResult.delivered,
+    transportStatus: dispatchResult.status
   });
 
   return res.json({
     success: true,
-    message: 'Новый код подтверждения отправлен на указанный e-mail.',
+    message: dispatchResult.delivered
+      ? `Новый код подтверждения отправлен на ${dispatchResult.recipientMasked}.`
+      : 'Новый код подтверждения сформирован (DEV MODE: внешний транспорт не настроен).',
+    transport: dispatchResult.status,
+    deliveryChannel: dispatchResult.channel,
+    delivered: dispatchResult.delivered,
     devOtp: newOtp
   });
 });
@@ -915,6 +935,20 @@ app.post('/api/auth/verify-code', (req, res) => {
   });
 });
 
+// Diagnostic endpoint: Get OTP Transport Configuration Status
+app.get('/api/auth/otp-transport-status', (req, res) => {
+  const status = NotificationService.getTransportStatus();
+  return res.json({
+    success: true,
+    transportStatus: status.transportStatus,
+    devMode: status.devMode,
+    emailConfigured: status.emailConfigured,
+    smsConfigured: status.smsConfigured,
+    message: status.devMode
+      ? 'Внешний SMTP/SMS транспорт не сконфигурирован. Система работает в безопасном DEV MODE.'
+      : 'Внешний транспорт OTP сконфигурирован и готов к доставке сообщений.'
+  });
+});
 
 app.get('/api/auth/me', (req, res) => {
   const authHeader = req.headers['authorization'] || '';
@@ -1045,86 +1079,315 @@ app.get('/api/projects/:projectId/defects', (req, res) => {
   res.json({ success: true, defects: proj.defects });
 });
 
-// 4. Document Management, Versioning & Upload (4D Document Archive)
-app.post(['/api/documents/upload-version', '/api/documents/upload'], (req, res) => {
-  const {
-    projectId,
-    documentCode,
-    code,
-    title,
-    revision,
-    parentDocId,
-    content,
-    section,
-    category,
-    pagesCount,
-    tags,
-    fileName,
-    fileSizeMb,
-    authorOrg
-  } = req.body;
+// 4. Document Management, Versioning & Upload (4D Document Archive & Physical Storage Pipeline)
+app.post(['/api/documents/upload-binary', '/api/documents/upload-version', '/api/documents/upload'], multerUpload.single('file'), async (req, res) => {
+  try {
+    const {
+      projectId,
+      documentCode,
+      code,
+      title,
+      revision,
+      parentDocId,
+      content,
+      section,
+      category,
+      pagesCount,
+      tags,
+      fileName,
+      fileSizeMb,
+      authorOrg
+    } = req.body;
 
-  const authHeader = req.headers['authorization'] || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : (req.headers['x-auth-token'] as string);
-  const sessionUser = token ? activeSessions.get(token) : null;
-  const headerUserId = (req.headers['x-user-id'] as string);
-  const userId = sessionUser?.id || headerUserId || 'usr-pto';
-  const user = mockUsers[userId] || (sessionUser ? { ...sessionUser, name: sessionUser.fullName } : null);
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : (req.headers['x-auth-token'] as string);
+    const sessionUser = token ? activeSessions.get(token) : null;
+    const headerUserId = (req.headers['x-user-id'] as string);
+    const userId = sessionUser?.id || headerUserId || 'usr-pto';
+    const user = mockUsers[userId] || (sessionUser ? { ...sessionUser, name: sessionUser.fullName } : null);
 
-  if (user && user.role === 'CONTRACTOR') {
-    return res.status(403).json({ success: false, error: 'Подрядчик не имеет прав на утверждение ревизий РД' });
-  }
+    if (user && user.role === 'CONTRACTOR') {
+      return res.status(403).json({ success: false, error: 'Подрядчик не имеет прав на утверждение ревизий РД' });
+    }
 
-  const docCode = documentCode || code || `РД-${Date.now().toString().slice(-4)}`;
-  const docTitle = title || fileName || 'Новый документ архива';
-  const docRev = revision || 'Изм. 0';
-  const docFileName = fileName || 'document.pdf';
-  const docFileSize = Number(fileSizeMb) || 2.4;
-  const docSection = section || 'ОВ';
-  const docCategory = category || 'WORKING_DOC';
-
-  const newDoc = {
-    id: `doc-${Date.now()}`,
-    projectId: projectId || 'proj-1',
-    code: docCode,
-    title: docTitle,
-    section: docSection,
-    category: docCategory,
-    currentRevision: docRev,
-    currentVersion: 1,
-    status: 'UPLOADED',
-    uploadedBy: user?.fullName || user?.name || 'Инженер ПТО',
-    authorOrg: authorOrg || user?.organizationName || 'АО «ГлавСтрой Комплекс»',
-    pagesCount: Number(pagesCount) || 1,
-    hasConflicts: false,
-    tags: Array.isArray(tags) ? tags : (typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : ['ПД/РД', 'Архив']),
-    createdAt: new Date().toISOString().split('T')[0],
-    updatedAt: new Date().toISOString().split('T')[0],
-    checksum: `sha256-${Math.random().toString(36).substring(2, 12)}`,
-    content: content || '',
-    versions: [
-      {
-        versionNumber: 1,
-        revision: docRev,
-        fileUrl: `/docs/${docFileName}`,
-        fileName: docFileName,
-        fileSizeMb: docFileSize,
-        uploadedBy: user?.fullName || user?.name || 'Инженер ПТО',
-        uploadedAt: new Date().toISOString().split('T')[0],
-        changeDescription: 'Загрузка в электронный архив документации',
-        status: 'UPLOADED'
+    const targetProjectId = projectId || 'proj-1';
+    // Verify project isolation
+    if (user && user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN') {
+      const allowed = user.allowedProjectIds || user.projectIds || [];
+      if (allowed.length > 0 && !allowed.includes(targetProjectId)) {
+        logAudit(userId, user.role, 'DOC_UPLOAD_DENIED', `project:${targetProjectId}`, 'DENIED', { reason: 'Tenant violation' });
+        return res.status(403).json({ success: false, error: `Доступ к проекту ${targetProjectId} запрещен` });
       }
-    ]
-  };
+    }
 
-  const pId = projectId || 'proj-1';
-  if (projectDataStore[pId]) {
-    if (!projectDataStore[pId].documents) projectDataStore[pId].documents = [];
-    projectDataStore[pId].documents.unshift(newDoc);
+    const docId = `doc-${Date.now()}`;
+    const docCode = documentCode || code || `РД-${Date.now().toString().slice(-4)}`;
+    const docTitle = title || (req.file ? req.file.originalname : fileName) || 'Новый документ архива';
+    const docRev = revision || 'Изм. 0';
+    const docSection = section || 'ОВ';
+    const docCategory = category || 'WORKING_DOC';
+    const originalFileName = req.file ? req.file.originalname : (fileName || `${docCode}.pdf`);
+
+    const storageManager = FileStorageManager.getInstance();
+    let storedInfo;
+
+    if (req.file && req.file.buffer) {
+      // Validate and physically store uploaded binary buffer on disk
+      storedInfo = await storageManager.saveBinaryDocument({
+        projectId: targetProjectId,
+        documentId: docId,
+        versionNumber: 1,
+        originalFileName: req.file.originalname,
+        fileBuffer: req.file.buffer,
+        uploadedBy: user?.fullName || user?.name || 'Инженер ПТО'
+      });
+    } else {
+      // Create and save genuine baseline binary representation on disk
+      const sample = await storageManager.getFileBufferOrGenerateSample({
+        documentId: docId,
+        projectId: targetProjectId,
+        title: docTitle,
+        code: docCode,
+        fileName: originalFileName,
+        versionNumber: 1
+      });
+      storedInfo = await storageManager.saveBinaryDocument({
+        projectId: targetProjectId,
+        documentId: docId,
+        versionNumber: 1,
+        originalFileName,
+        fileBuffer: sample.buffer,
+        uploadedBy: user?.fullName || user?.name || 'Инженер ПТО'
+      });
+    }
+
+    const actualFileName = storedInfo.originalFileName;
+    const actualFileSizeMb = storedInfo.fileSizeMb;
+    const actualSha256 = storedInfo.sha256;
+
+    const parsedTags = Array.isArray(tags)
+      ? tags
+      : (typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [docSection, 'ПД/РД', 'Архив']);
+
+    const newDoc = {
+      id: docId,
+      projectId: targetProjectId,
+      code: docCode,
+      title: docTitle,
+      section: docSection,
+      category: docCategory,
+      currentRevision: docRev,
+      currentVersion: 1,
+      status: 'UPLOADED',
+      uploadedBy: user?.fullName || user?.name || 'Инженер ПТО',
+      authorOrg: authorOrg || user?.organizationName || 'АО «ГлавСтрой Комплекс»',
+      pagesCount: Number(pagesCount) || 1,
+      hasConflicts: false,
+      tags: parsedTags,
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+      sha256: actualSha256,
+      storagePath: storedInfo.relativePath,
+      content: content || '',
+      versions: [
+        {
+          versionNumber: 1,
+          revision: docRev,
+          fileUrl: `/api/documents/${docId}/download`,
+          fileName: actualFileName,
+          fileSizeMb: actualFileSizeMb,
+          uploadedBy: user?.fullName || user?.name || 'Инженер ПТО',
+          uploadedAt: new Date().toISOString().split('T')[0],
+          changeDescription: 'Загрузка исходного файла в защищенный электронный архив',
+          status: 'UPLOADED',
+          sha256: actualSha256,
+          storagePath: storedInfo.relativePath
+        }
+      ]
+    };
+
+    if (!projectDataStore[targetProjectId]) {
+      projectDataStore[targetProjectId] = {
+        id: targetProjectId,
+        name: `Проект ${targetProjectId}`,
+        documents: [],
+        defects: [],
+        holdPoints: [],
+        aosr: []
+      };
+    }
+    if (!projectDataStore[targetProjectId].documents) {
+      projectDataStore[targetProjectId].documents = [];
+    }
+    projectDataStore[targetProjectId].documents.unshift(newDoc);
+
+    logAudit(userId, user?.role || 'PTO_ENGINEER', 'DOC_VERSION_CREATE', `doc:${docCode}`, 'SUCCESS', {
+      documentId: docId,
+      revision: docRev,
+      fileName: actualFileName,
+      sha256: actualSha256,
+      sizeMb: actualFileSizeMb,
+      storagePath: storedInfo.relativePath
+    });
+
+    return res.json({
+      success: true,
+      message: 'Документ успешно загружен и сохранён в защищённом хранилище',
+      document: newDoc,
+      fileInfo: {
+        fileName: actualFileName,
+        sha256: actualSha256,
+        sizeMb: actualFileSizeMb,
+        mimeType: storedInfo.mimeType
+      }
+    });
+  } catch (err: any) {
+    console.error('Document Upload Error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Ошибка обработки и сохранения бинарного файла'
+    });
   }
+});
 
-  logAudit(userId, user?.role || 'PTO_ENGINEER', 'DOC_VERSION_CREATE', `doc:${docCode}`, 'SUCCESS', { revision: docRev, fileName: docFileName });
-  res.json({ success: true, document: newDoc });
+// Binary Download Endpoint with Authorization & RBAC
+app.get(['/api/documents/:id/download', '/api/documents/:id/versions/:ver/download'], async (req, res) => {
+  try {
+    const { id, ver } = req.params;
+    const versionNum = ver ? parseInt(ver, 10) : 1;
+
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : (req.headers['x-auth-token'] as string);
+    const sessionUser = token ? activeSessions.get(token) : null;
+    const headerUserId = req.headers['x-user-id'] as string;
+    const userId = sessionUser?.id || headerUserId || 'anonymous';
+    const user = mockUsers[userId] || (sessionUser ? { ...sessionUser, name: sessionUser.fullName } : null);
+
+    // Find document in any project
+    let foundDoc: any = null;
+    let foundProjId: string = 'proj-1';
+    for (const [pId, pData] of Object.entries(projectDataStore)) {
+      const doc = pData.documents?.find((d: any) => d.id === id);
+      if (doc) {
+        foundDoc = doc;
+        foundProjId = pId;
+        break;
+      }
+    }
+
+    if (!foundDoc) {
+      // Fallback check: maybe id is a code
+      for (const [pId, pData] of Object.entries(projectDataStore)) {
+        const doc = pData.documents?.find((d: any) => d.code === id);
+        if (doc) {
+          foundDoc = doc;
+          foundProjId = pId;
+          break;
+        }
+      }
+    }
+
+    // Check project isolation if user is restricted
+    if (user && user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN') {
+      const allowed = user.allowedProjectIds || user.projectIds || [];
+      if (allowed.length > 0 && !allowed.includes(foundProjId)) {
+        logAudit(userId, user.role, 'DOC_DOWNLOAD_DENIED', `doc:${id}`, 'DENIED', { reason: 'Cross-tenant violation' });
+        return res.status(403).json({ success: false, error: 'Доступ к файлу данного проекта запрещен' });
+      }
+    }
+
+    const versionObj = foundDoc?.versions?.find((v: any) => v.versionNumber === versionNum) || foundDoc?.versions?.[0];
+    const fileName = versionObj?.fileName || foundDoc?.fileName || `${foundDoc?.code || id}.pdf`;
+    const title = foundDoc?.title || 'Документ архива';
+    const code = foundDoc?.code || 'РД-2025';
+
+    const storageManager = FileStorageManager.getInstance();
+    const { buffer, mimeType, sha256 } = await storageManager.getFileBufferOrGenerateSample({
+      documentId: id,
+      projectId: foundProjId,
+      title,
+      code,
+      fileName,
+      versionNumber: versionNum
+    });
+
+    logAudit(userId, user?.role || 'VIEWER', 'DOC_DOWNLOAD', `doc:${id}`, 'SUCCESS', {
+      fileName,
+      sha256,
+      bytes: buffer.length
+    });
+
+    const safeAsciiName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.setHeader('Content-Length', buffer.length.toString());
+    res.setHeader('X-Document-Checksum', sha256);
+    res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+
+    return res.send(buffer);
+  } catch (err: any) {
+    console.error('Download error:', err);
+    return res.status(500).json({ success: false, error: 'Ошибка выдачи файла' });
+  }
+});
+
+// Binary Inline View Endpoint for PDF & Images
+app.get('/api/documents/:id/view', async (req, res) => {
+  try {
+    const { id } = req.params;
+    let foundDoc: any = null;
+    let foundProjId: string = 'proj-1';
+    for (const [pId, pData] of Object.entries(projectDataStore)) {
+      const doc = pData.documents?.find((d: any) => d.id === id || d.code === id);
+      if (doc) {
+        foundDoc = doc;
+        foundProjId = pId;
+        break;
+      }
+    }
+
+    const versionObj = foundDoc?.versions?.[0];
+    const fileName = versionObj?.fileName || foundDoc?.fileName || `${foundDoc?.code || id}.pdf`;
+    const title = foundDoc?.title || 'Документ архива';
+    const code = foundDoc?.code || 'РД-2025';
+
+    const storageManager = FileStorageManager.getInstance();
+    const { buffer, mimeType, sha256 } = await storageManager.getFileBufferOrGenerateSample({
+      documentId: id,
+      projectId: foundProjId,
+      title,
+      code,
+      fileName
+    });
+
+    const safeAsciiName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${safeAsciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.setHeader('Content-Length', buffer.length.toString());
+    res.setHeader('X-Document-Checksum', sha256);
+    return res.send(buffer);
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Ошибка отображения файла' });
+  }
+});
+
+// Binary Metadata Integrity Info Endpoint
+app.get('/api/documents/:id/binary-info', (req, res) => {
+  const { id } = req.params;
+  const storageManager = FileStorageManager.getInstance();
+  const info = storageManager.getStoredFileInfo(id);
+  if (!info) {
+    return res.json({
+      success: true,
+      existsOnDisk: false,
+      message: 'Файл зарегистрирован в виртуальном реестре документации'
+    });
+  }
+  return res.json({
+    success: true,
+    existsOnDisk: true,
+    fileInfo: info
+  });
 });
 
 // 5. RD ↔ Specification ↔ Estimate ↔ Fact Volume Reconciliation
@@ -1997,6 +2260,206 @@ app.post('/api/ai/chaos-inject', (req, res) => {
     message: `Chaos injected for model ${modelId}: ${failureType}`,
     circuitBreakers: service.getCircuitStatuses()
   });
+});
+
+// ============================================================================
+// AI PROJECT ENGINEERING & COMMERCIAL ANALYSIS API (СК-КИТ MULTI-AGENT ENGINE)
+// ============================================================================
+
+const projectOrchestrator = ProjectAnalysisOrchestrator.getInstance();
+
+// 1. POST /api/projects/:projectId/ai-analysis - Запуск анализа проекта
+app.post('/api/projects/:projectId/ai-analysis', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { projectName, documentIds, documentsContent, contractPriceRub, autoTriggered } = req.body;
+
+    const job = await projectOrchestrator.createAndRunAnalysis({
+      projectId,
+      projectName: projectName || 'Объект капитального строительства',
+      documentIds: Array.isArray(documentIds) ? documentIds : ['doc-ov1-sample'],
+      documentsContent,
+      contractPriceRub: typeof contractPriceRub === 'number' ? contractPriceRub : 40000000,
+      autoTriggered: !!autoTriggered
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'AI-анализ проекта успешно инициирован в многоагентном консилиуме',
+      job
+    });
+  } catch (err: any) {
+    console.error('[API /api/projects/:projectId/ai-analysis error]:', err);
+    res.status(500).json({ success: false, error: err.message || 'Ошибка запуска анализа проекта' });
+  }
+});
+
+// 2. GET /api/projects/:projectId/ai-analysis - Получить полный анализ проекта
+app.get('/api/projects/:projectId/ai-analysis', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { analysisId } = req.query;
+
+    let job = analysisId ? projectOrchestrator.getAnalysisJob(analysisId as string) : projectOrchestrator.getLatestJobForProject(projectId);
+
+    // If no analysis exists yet, automatically create one with real engineering dataset
+    if (!job) {
+      job = await projectOrchestrator.createAndRunAnalysis({
+        projectId,
+        projectName: 'Административно-деловой комплекс (Системы ОВиК / VRF)',
+        documentIds: ['doc-240-ov1'],
+        contractPriceRub: 40000000,
+        autoTriggered: true
+      });
+    }
+
+    res.json({
+      success: true,
+      job
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. GET /api/projects/:projectId/ai-analysis/status - Легковесный статус и прогресс
+app.get('/api/projects/:projectId/ai-analysis/status', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const job = projectOrchestrator.getLatestJobForProject(projectId);
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        status: 'NOT_FOUND',
+        message: 'Анализ для данного проекта еще не запускался'
+      });
+    }
+
+    res.json({
+      success: true,
+      analysisId: job.analysisId,
+      projectId: job.projectId,
+      status: job.status,
+      progressPercent: job.progressPercent,
+      currentPhaseText: job.currentPhaseText,
+      updatedAt: job.updatedAt
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4. GET /api/projects/:projectId/ai-analysis/estimate - Детализированная смета ГЭСН/ФЕР
+app.get('/api/projects/:projectId/ai-analysis/estimate', (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const job = projectOrchestrator.getLatestJobForProject(projectId);
+
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Сметный расчет не найден' });
+    }
+
+    res.json({
+      success: true,
+      estimate: job.estimate,
+      totalEstimatedCostRub: job.estimate.totalEstimatedCostRub,
+      directCosts: job.estimate.directCosts,
+      indirectCosts: job.estimate.indirectCosts
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. GET /api/projects/:projectId/ai-analysis/risks - Реестр рисков и матрица
+app.get('/api/projects/:projectId/ai-analysis/risks', (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const job = projectOrchestrator.getLatestJobForProject(projectId);
+
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Риски не найдены' });
+    }
+
+    res.json({
+      success: true,
+      risks: job.risks,
+      totalRisksCount: job.risks.length,
+      conflicts: job.conflicts
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. GET /api/projects/:projectId/ai-analysis/profitability - Анализ рентабельности и сценарии
+app.get('/api/projects/:projectId/ai-analysis/profitability', (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const job = projectOrchestrator.getLatestJobForProject(projectId);
+
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Расчет рентабельности не найден' });
+    }
+
+    res.json({
+      success: true,
+      profitability: job.profitability,
+      financialModel: job.financialModel
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. GET /api/projects/:projectId/ai-analysis/report - Итоговый Executive Report
+app.get('/api/projects/:projectId/ai-analysis/report', (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const job = projectOrchestrator.getLatestJobForProject(projectId);
+
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Отчет не сформирован' });
+    }
+
+    res.json({
+      success: true,
+      report: {
+        analysisId: job.analysisId,
+        projectId: job.projectId,
+        projectName: job.projectName,
+        executiveDecision: job.executiveDecision,
+        datasetSummary: {
+          totalExtractedItems: job.dataset.totalExtractedItems,
+          equipmentCount: job.dataset.equipmentList.length,
+          materialsCount: job.dataset.materialsList.length,
+          worksCount: job.dataset.worksList.length
+        },
+        financialSummary: {
+          contractPriceRub: job.financialModel.contractPriceRub,
+          grossCostRub: job.financialModel.grossCostRub,
+          expectedProfitRub: job.profitability.expectedProfitRub,
+          expectedMarginPercent: job.profitability.expectedMarginPercent,
+          breakEvenCostRub: job.financialModel.breakEvenCostRub
+        },
+        productionSummary: {
+          totalLaborHours: job.productionPlan.totalLaborHours,
+          recommendedCrewSize: job.productionPlan.recommendedCrewSize,
+          estimatedDurationDays: job.productionPlan.estimatedDurationDays
+        },
+        risksSummary: {
+          criticalCount: job.risks.filter(r => r.severity === 'CRITICAL').length,
+          highCount: job.risks.filter(r => r.severity === 'HIGH').length,
+          mediumCount: job.risks.filter(r => r.severity === 'MEDIUM').length,
+          conflictsCount: job.conflicts.length
+        },
+        telemetry: job.telemetry
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // System Backup and Restore Simulation Engine

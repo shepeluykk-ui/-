@@ -128,6 +128,8 @@ interface AppContextType {
   // Registration & Lifecycle Management
   registrationRequests: RegistrationRequest[];
   pendingRegistrationsCount: number;
+  pendingAlertRequest: RegistrationRequest | null;
+  dismissPendingAlert: (requestId: string) => void;
   submitRegistration: (data: RegistrationFormData) => Promise<{ success: boolean; message: string; requestId?: string; error?: string }>;
   verifyRegistrationCode: (data: { requestId?: string; loginOrEmail: string; code: string }) => Promise<{ success: boolean; message: string; error?: string; remainingAttempts?: number }>;
   resendRegistrationCode: (data: { requestId?: string; loginOrEmail: string }) => Promise<{ success: boolean; message: string; error?: string; devOtp?: string; retryAfter?: number }>;
@@ -545,7 +547,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuditLogs(prev => [entry, ...prev]);
   };
 
-  // Document Operations
+  // Document Operations (Real Binary Upload Pipeline)
   const uploadDocument = async (docData: {
     file?: File;
     fileName: string;
@@ -560,32 +562,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }): Promise<{ success: boolean; document?: ProjectDocument; error?: string; status?: number }> => {
     try {
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
         'x-user-id': currentUser.id
       };
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      const payload = {
-        projectId: activeProjectId,
-        documentCode: docData.code,
-        code: docData.code,
-        title: docData.title,
-        section: docData.section,
-        category: docData.category,
-        pagesCount: docData.pagesCount || 1,
-        tags: docData.tags || [],
-        fileName: docData.fileName,
-        fileSizeMb: docData.fileSizeMb || 1.0,
-        revision: docData.revision || 'Изм. 0',
-        authorOrg: currentUser.organizationName
-      };
+      const formData = new FormData();
+      if (docData.file) {
+        formData.append('file', docData.file);
+      }
+      formData.append('projectId', activeProjectId);
+      formData.append('documentCode', docData.code);
+      formData.append('code', docData.code);
+      formData.append('title', docData.title);
+      formData.append('section', docData.section);
+      formData.append('category', docData.category);
+      formData.append('pagesCount', String(docData.pagesCount || 1));
+      formData.append('tags', (docData.tags || []).join(','));
+      formData.append('fileName', docData.fileName || docData.file?.name || `${docData.code}.pdf`);
+      formData.append('fileSizeMb', String(docData.fileSizeMb || (docData.file ? (docData.file.size / (1024 * 1024)).toFixed(2) : 1.0)));
+      formData.append('revision', docData.revision || 'Изм. 0');
+      formData.append('authorOrg', currentUser.organizationName);
 
-      const response = await fetch('/api/documents/upload-version', {
+      const response = await fetch('/api/documents/upload-binary', {
         method: 'POST',
-        headers,
-        body: JSON.stringify(payload)
+        headers, // Browser sets multipart/form-data boundary automatically
+        body: formData
       });
 
       const data = await response.json();
@@ -611,17 +614,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pagesCount: Number(rawDoc.pagesCount) || docData.pagesCount || 1,
         hasConflicts: false,
         tags: Array.isArray(rawDoc.tags) ? rawDoc.tags : (docData.tags || []),
+        sha256: rawDoc.sha256 || data.fileInfo?.sha256,
         versions: rawDoc.versions || [
           {
             versionNumber: 1,
             revision: rawDoc.currentRevision || docData.revision || 'Изм. 0',
-            fileUrl: `/docs/${docData.fileName}`,
-            fileName: docData.fileName,
-            fileSizeMb: docData.fileSizeMb || 1.0,
+            fileUrl: `/api/documents/${rawDoc.id || docData.code}/download`,
+            fileName: rawDoc.fileName || docData.fileName,
+            fileSizeMb: Number(rawDoc.fileSizeMb) || docData.fileSizeMb || 1.0,
             uploadedBy: currentUser.fullName,
             uploadedAt: new Date().toISOString().split('T')[0],
-            changeDescription: 'Загрузка в систему',
-            status: 'UPLOADED'
+            changeDescription: 'Загрузка в защищённый электронный архив',
+            status: 'UPLOADED',
+            sha256: rawDoc.sha256 || data.fileInfo?.sha256
           }
         ],
         createdAt: rawDoc.createdAt || new Date().toISOString().split('T')[0],
@@ -629,11 +634,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       setDocuments(prev => [createdDoc, ...prev]);
-      logAction('CREATE', 'PROJECT_DOCUMENT', createdDoc.id, `Загружен документ: ${createdDoc.title} (${createdDoc.code})`);
+      logAction('CREATE', 'PROJECT_DOCUMENT', createdDoc.id, `Загружен исходный файл документа: ${createdDoc.title} (${createdDoc.code})`);
 
       return { success: true, document: createdDoc, status: response.status };
     } catch (err: any) {
-      const errorMsg = err.message || 'Ошибка сети при передаче файла';
+      const errorMsg = err.message || 'Ошибка сети при передаче бинарного файла';
       return { success: false, error: errorMsg, status: 0 };
     }
   };
@@ -930,8 +935,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Registration Requests state
+  // Registration Requests state & Real-time Global Alert for Super Admin
   const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequest[]>([]);
+  const [pendingAlertRequest, setPendingAlertRequest] = useState<RegistrationRequest | null>(null);
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(new Set());
+
+  const dismissPendingAlert = (requestId: string) => {
+    setDismissedAlertIds(prev => {
+      const next = new Set(prev);
+      next.add(requestId);
+      return next;
+    });
+    setPendingAlertRequest(prev => (prev?.id === requestId ? null : prev));
+  };
 
   const fetchRegistrationRequests = async (): Promise<RegistrationRequest[]> => {
     try {
@@ -947,6 +963,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await res.json();
       if (data.success && Array.isArray(data.requests)) {
         setRegistrationRequests(data.requests);
+
+        // Global Alert Trigger for Super Admin
+        if (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN') {
+          const pendingUnseen = data.requests.find(
+            (r: RegistrationRequest) => r.status === 'PENDING' && !dismissedAlertIds.has(r.id)
+          );
+          if (pendingUnseen) {
+            setPendingAlertRequest(pendingUnseen);
+          } else {
+            setPendingAlertRequest(null);
+          }
+        }
+
         return data.requests;
       }
       return [];
@@ -1045,6 +1074,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Ошибка одобрения заявки', message: '' };
       }
+      setPendingAlertRequest(prev => (prev?.id === requestId ? null : prev));
       await fetchRegistrationRequests();
       logAction('APPROVE', 'USER_REGISTRATION', requestId, 'Одобрена заявка на регистрацию');
       return { success: true, message: data.message, devOtp: data.devOtp };
@@ -1072,6 +1102,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Ошибка отклонения заявки', message: '' };
       }
+      setPendingAlertRequest(prev => (prev?.id === requestId ? null : prev));
       await fetchRegistrationRequests();
       logAction('REJECT', 'USER_REGISTRATION', requestId, `Отклонена заявка: ${reason || 'Без причины'}`);
       return { success: true, message: data.message };
@@ -1082,10 +1113,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const pendingRegistrationsCount = registrationRequests.filter(r => r.status === 'PENDING').length;
 
+  // Real-time polling for Super Admin registration notifications
   useEffect(() => {
-    if (isAuthenticated && (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'CHIEF_ENGINEER')) {
-      fetchRegistrationRequests();
+    if (!isAuthenticated || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'CHIEF_ENGINEER')) {
+      return;
     }
+
+    fetchRegistrationRequests();
+
+    const timer = setInterval(() => {
+      fetchRegistrationRequests();
+    }, 4000);
+
+    return () => clearInterval(timer);
   }, [isAuthenticated, currentUser.role]);
 
   // Filter entities by activeProjectId for strict tenant/project isolation
@@ -1112,6 +1152,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthenticated,
         authToken,
         authLoading,
+        sessionExpiredMessage,
+        clearSessionExpiredMessage,
         login,
         logout,
         projects,
@@ -1155,6 +1197,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         restoreSystemBackup,
         registrationRequests,
         pendingRegistrationsCount,
+        pendingAlertRequest,
+        dismissPendingAlert,
         submitRegistration,
         verifyRegistrationCode,
         resendRegistrationCode,

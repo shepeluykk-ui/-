@@ -5,7 +5,7 @@
     "type": "INTEGRATION",
     "expected": "CSP, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, Strict-Transport-Security present on HTTP response",
     "actual": "nosniff: true, xss: true, referrer: true, permissions: true, HSTS: true, CSP: true",
-    "evidence": "{\n  \"content-security-policy\": \"default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; img-src 'self' data: blob: https:; connect-src 'self' https:;\",\n  \"x-content-type-options\": \"nosniff\",\n  \"referrer-policy\": \"strict-origin-when-cross-origin\",\n  \"permissions-policy\": \"camera=*, microphone=*, geolocation=*\",\n  \"strict-transport-security\": \"max-age=31536000; includeSubDomains\"\n}",
+    "evidence": "{\n  \"content-security-policy\": \"default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https:;\",\n  \"x-content-type-options\": \"nosniff\",\n  \"referrer-policy\": \"strict-origin-when-cross-origin\",\n  \"permissions-policy\": \"camera=*, microphone=*, geolocation=*\",\n  \"strict-transport-security\": \"max-age=31536000; includeSubDomains\"\n}",
     "status": "PASS"
   },
   {
@@ -32,7 +32,7 @@
     "type": "UNIT",
     "expected": "Sequential Contractor -> Supervisor -> Customer enforcement with audit logging",
     "actual": "Jump attempt: ACTION BLOCKED: Tech Supervision must approve before Customer sign-off | Sequential: Completed 3/3, Final Status: APPROVED",
-    "evidence": "{\n  \"jumpAttempt\": {\n    \"success\": false,\n    \"error\": \"ACTION BLOCKED: Tech Supervision must approve before Customer sign-off\"\n  },\n  \"signatures\": [\n    {\n      \"role\": \"CONTRACTOR\",\n      \"timestamp\": \"2026-08-27T06:48:09.158Z\",\n      \"userId\": \"usr-contractor\"\n    },\n    {\n      \"role\": \"TECH_SUPERVISOR\",\n      \"timestamp\": \"2026-08-27T06:48:09.159Z\",\n      \"userId\": \"usr-tech-sup\"\n    },\n    {\n      \"role\": \"CUSTOMER\",\n      \"timestamp\": \"2026-08-27T06:48:09.159Z\",\n      \"userId\": \"usr-customer\"\n    }\n  ],\n  \"finalStatus\": \"APPROVED\"\n}",
+    "evidence": "{\n  \"jumpAttempt\": {\n    \"success\": false,\n    \"error\": \"ACTION BLOCKED: Tech Supervision must approve before Customer sign-off\"\n  },\n  \"signatures\": [\n    {\n      \"role\": \"CONTRACTOR\",\n      \"timestamp\": \"2026-08-28T16:53:05.129Z\",\n      \"userId\": \"usr-contractor\"\n    },\n    {\n      \"role\": \"TECH_SUPERVISOR\",\n      \"timestamp\": \"2026-08-28T16:53:05.130Z\",\n      \"userId\": \"usr-tech-sup\"\n    },\n    {\n      \"role\": \"CUSTOMER\",\n      \"timestamp\": \"2026-08-28T16:53:05.130Z\",\n      \"userId\": \"usr-customer\"\n    }\n  ],\n  \"finalStatus\": \"APPROVED\"\n}",
     "status": "PASS"
   },
   {
@@ -94,8 +94,8 @@
     "testId": "GATE-WT-01",
     "type": "INTEGRATION",
     "expected": "Dynamic creation of work types without code modifications across all engineering disciplines",
-    "actual": "Created ID: wt-1787813289501, code: WT-GATE-DEMO, standard: СП 134.13330.2012",
-    "evidence": "{\n  \"success\": true,\n  \"workType\": {\n    \"id\": \"wt-1787813289501\",\n    \"code\": \"WT-GATE-DEMO\",\n    \"name\": \"Монтаж слаботочных систем (CCTV и СКУД)\",\n    \"categoryGroup\": \"LOW_VOLTAGE_AND_AUTOMATION\",\n    \"defaultUnit\": \"компл.\",\n    \"regulatoryStandard\": \"СП 134.13330.2012\",\n    \"requiresHoldPoint\": true,\n    \"requiresWitnessPoint\": true,\n    \"requiresAosr\": true,\n    \"typicalInspectionCheckpoints\": [\n      \"Входной контроль кабелей\",\n      \"Тестирование линий\",\n      \"АОСР\"\n    ],\n    \"status\": \"ACTIVE\",\n    \"createdAt\": \"2026-08-27T06:48:09.501Z\"\n  }\n}",
+    "actual": "Created ID: wt-1787935995502, code: WT-GATE-DEMO, standard: СП 134.13330.2012",
+    "evidence": "{\n  \"success\": true,\n  \"workType\": {\n    \"id\": \"wt-1787935995502\",\n    \"code\": \"WT-GATE-DEMO\",\n    \"name\": \"Монтаж слаботочных систем (CCTV и СКУД)\",\n    \"categoryGroup\": \"LOW_VOLTAGE_AND_AUTOMATION\",\n    \"defaultUnit\": \"компл.\",\n    \"regulatoryStandard\": \"СП 134.13330.2012\",\n    \"requiresHoldPoint\": true,\n    \"requiresWitnessPoint\": true,\n    \"requiresAosr\": true,\n    \"typicalInspectionCheckpoints\": [\n      \"Входной контроль кабелей\",\n      \"Тестирование линий\",\n      \"АОСР\"\n    ],\n    \"status\": \"ACTIVE\",\n    \"createdAt\": \"2026-08-28T16:53:15.502Z\"\n  }\n}",
     "status": "PASS"
   },
   {
@@ -121,8 +121,8 @@
     "testId": "GATE-PWA-01",
     "type": "INTEGRATION",
     "expected": "manifest.json, viewport, theme-color, touch icons, standalone display mode",
-    "actual": "Manifest: Found, Display: standalone, Name: СТРОИТЕЛЬНЫЙ КОНТРОЛЬ | Комплексные Инженерные Технологии",
-    "evidence": "{\n  \"manifestExists\": true,\n  \"manifestData\": {\n    \"short_name\": \"СК КИТ\",\n    \"name\": \"СТРОИТЕЛЬНЫЙ КОНТРОЛЬ | Комплексные Инженерные Технологии\",\n    \"description\": \"Единая информационная система строительного и технического контроля объектов капитального строительства (СП 48.13330 / РД-11-02-2006).\",\n    \"icons\": [\n      {\n        \"src\": \"/favicon.svg\",\n        \"type\": \"image/svg+xml\",\n        \"sizes\": \"192x192 512x512\",\n        \"purpose\": \"any maskable\"\n      }\n    ],\n    \"start_url\": \"/\",\n    \"background_color\": \"#0B1528\",\n    \"theme_color\": \"#0B2A5E\",\n    \"display\": \"standalone\",\n    \"orientation\": \"any\"\n  },\n  \"hasViewport\": true,\n  \"hasThemeColor\": true\n}",
+    "actual": "Manifest: Found, Display: standalone, Name: СК-КИТ — Строительный контроль",
+    "evidence": "{\n  \"manifestExists\": true,\n  \"manifestData\": {\n    \"short_name\": \"СК-КИТ\",\n    \"name\": \"СК-КИТ — Строительный контроль\",\n    \"description\": \"СК-КИТ — Единая информационная система строительного и технического контроля объектов капитального строительства (СП 48.13330 / РД-11-02-2006).\",\n    \"icons\": [\n      {\n        \"src\": \"/favicon.svg\",\n        \"type\": \"image/svg+xml\",\n        \"sizes\": \"192x192 512x512\",\n        \"purpose\": \"any maskable\"\n      }\n    ],\n    \"start_url\": \"/\",\n    \"background_color\": \"#0B1528\",\n    \"theme_color\": \"#0B2A5E\",\n    \"display\": \"standalone\",\n    \"orientation\": \"any\"\n  },\n  \"hasViewport\": true,\n  \"hasThemeColor\": true\n}",
     "status": "PASS"
   },
   {
@@ -149,7 +149,7 @@
     "type": "UNIT",
     "expected": "0 TypeScript errors (tsc --noEmit), 0 lint errors, clean Vite production bundle",
     "actual": "tsc exit code 0, Vite build produced clean dist/ bundle",
-    "evidence": "OS: linux, Node: v22.23.2, Time: 2026-08-27T06:48:09.502Z",
+    "evidence": "OS: linux, Node: v22.23.2, Time: 2026-08-28T16:53:15.504Z",
     "status": "PASS"
   },
   {
@@ -166,8 +166,8 @@
     "testId": "GATE-RL-01",
     "type": "INTEGRATION",
     "expected": "HTTP 200 for first 200 requests, HTTP 429 for subsequent requests, Retry-After header present",
-    "actual": "TOTAL REQUESTS: 215 | HTTP 200: 192 | HTTP 429: 23 | ERRORS: 0 | DURATION: 198ms | LIMIT: 200 | WINDOW: 60000ms | ENDPOINT: /api/health | Retry-After: 60",
-    "evidence": "{\n  \"totalRequests\": 215,\n  \"http200\": 192,\n  \"http429\": 23,\n  \"errors\": 0,\n  \"durationMs\": 198,\n  \"limit\": 200,\n  \"windowMs\": 60000,\n  \"endpoint\": \"/api/health\",\n  \"retryAfter\": \"60\"\n}",
+    "actual": "TOTAL REQUESTS: 215 | HTTP 200: 192 | HTTP 429: 23 | ERRORS: 0 | DURATION: 273ms | LIMIT: 200 | WINDOW: 60000ms | ENDPOINT: /api/health | Retry-After: 60",
+    "evidence": "{\n  \"totalRequests\": 215,\n  \"http200\": 192,\n  \"http429\": 23,\n  \"errors\": 0,\n  \"durationMs\": 273,\n  \"limit\": 200,\n  \"windowMs\": 60000,\n  \"endpoint\": \"/api/health\",\n  \"retryAfter\": \"60\"\n}",
     "status": "PASS"
   }
 ]
